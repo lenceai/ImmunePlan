@@ -85,10 +85,10 @@ run_script "2" "autoimmune_questions"
 # Step 3: Download papers
 run_script "3" "download_papers"
 
-# Step 4: QLoRA fine-tuning
-run_script "4" "qlora_finetune"
+# Step 4: DoRA fine-tuning (with 4-bit quantization)
+run_script "4" "finetune"
 
-# Step 5: Test QLoRA
+# Step 5: Test fine-tuned model (DoRA or QLoRA)
 run_script "5" "test_qlora"
 
 # Step 6: Full fine-tuning (optional - will prompt if insufficient VRAM)

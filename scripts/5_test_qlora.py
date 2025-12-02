@@ -1,204 +1,121 @@
 #!/usr/bin/env python3
 """
-Script 5: Test QLoRA Model
-Version: 1.0.0
+Script 5: Test Fine-Tuned Model
+Version: 2.0.0
 
-Purpose: Test the QLoRA fine-tuned model on benchmark questions.
+Purpose: Test the fine-tuned model (DoRA or QLoRA) on benchmark questions.
 
 Usage:
     python scripts/5_test_qlora.py
 
 Input:
-    - models/qlora_model/: QLoRA model from script 4
-    - scripts/2_autoimmune_questions.py: Benchmark questions
+    - models/dora_model/: DoRA model from script 4 (preferred)
+    - models/qlora_model/: QLoRA model from script 4 (legacy)
 
 Output:
-    - results/qlora_results.json: QLoRA model benchmark results
+    - results/finetuned_results.json: Fine-tuned model benchmark results
 """
 
-import os
 import sys
-import json
-import time
-from datetime import datetime
 from pathlib import Path
+from datetime import datetime
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
-from dotenv import load_dotenv
 
-# Define questions (same as script 2)
-AUTOIMMUNE_QUESTIONS = [
-    {
-        "id": "Q001",
-        "category": "Systemic Lupus Erythematosus",
-        "difficulty": "medium",
-        "question": "A 28-year-old woman presents with malar rash, photosensitivity, oral ulcers, and joint pain. Her ANA is positive at 1:640 with a speckled pattern, and anti-dsDNA antibodies are elevated. What is the most likely diagnosis, and what are the key diagnostic criteria you would use?"
-    },
-    {
-        "id": "Q002",
-        "category": "Rheumatoid Arthritis",
-        "difficulty": "medium",
-        "question": "A 45-year-old patient has symmetric polyarthritis affecting wrists, MCPs, and PIPs for 6 months, with morning stiffness lasting over 1 hour. RF and anti-CCP antibodies are positive. Explain the diagnostic criteria for rheumatoid arthritis and the significance of these serological markers."
-    },
-    {
-        "id": "Q003",
-        "category": "Sjogren's Syndrome",
-        "difficulty": "hard",
-        "question": "A 52-year-old woman complains of dry eyes and dry mouth for 2 years. Schirmer's test is abnormal, and she has positive anti-SSA/Ro and anti-SSB/La antibodies. What diagnostic criteria would you use to confirm Sjogren's syndrome, and what are the potential systemic complications?"
-    },
-    {
-        "id": "Q004",
-        "category": "Mixed Connective Tissue Disease",
-        "difficulty": "very_hard",
-        "question": "A patient has features of SLE, scleroderma, and polymyositis. Anti-RNP antibodies are strongly positive. What is the diagnosis, and how does this condition differ from overlap syndromes?"
-    },
-    {
-        "id": "Q005",
-        "category": "Polymyositis",
-        "difficulty": "hard",
-        "question": "A 40-year-old presents with progressive proximal muscle weakness, elevated CK, and positive anti-Jo-1 antibodies. What is the diagnosis, and what are the key features distinguishing polymyositis from dermatomyositis?"
-    },
-    {
-        "id": "Q006",
-        "category": "Systemic Sclerosis",
-        "difficulty": "hard",
-        "question": "A patient has Raynaud's phenomenon, skin thickening, and positive anti-Scl-70 antibodies. Explain the classification criteria for systemic sclerosis and the difference between limited and diffuse forms."
-    },
-    {
-        "id": "Q007",
-        "category": "Vasculitis",
-        "difficulty": "very_hard",
-        "question": "A patient presents with sinusitis, pulmonary nodules, and rapidly progressive glomerulonephritis. c-ANCA and PR3 antibodies are positive. What is the diagnosis, and what is the typical treatment approach?"
-    },
-    {
-        "id": "Q008",
-        "category": "Differential Diagnosis",
-        "difficulty": "very_hard",
-        "question": "A 35-year-old woman has fatigue, joint pain, positive ANA, and low complement levels. However, she also has hyperthyroidism and vitiligo. How would you differentiate between multiple autoimmune conditions versus a single systemic autoimmune disease?"
-    },
-    {
-        "id": "Q009",
-        "category": "Behçet's Disease",
-        "difficulty": "very_hard",
-        "question": "A patient has recurrent oral ulcers, genital ulcers, and uveitis. What are the diagnostic criteria for Behçet's disease, and what are the key features that distinguish it from other causes of oral and genital ulcers?"
-    },
-    {
-        "id": "Q010",
-        "category": "Drug-Induced Lupus",
-        "difficulty": "medium",
-        "question": "A patient on hydralazine for hypertension develops positive ANA and symptoms resembling SLE. What are the key differences between drug-induced lupus and idiopathic SLE, and how would you manage this case?"
-    }
-]
+# Add scripts directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
 
-# Load environment variables
-load_dotenv()
-
-MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-ai/DeepSeek-R1-Distill-Qwen-8B")
-MODELS_DIR = os.getenv("MODELS_DIR", "./models")
-RESULTS_DIR = os.getenv("RESULTS_DIR", "./results")
-MAX_SEQ_LENGTH = int(os.getenv("MAX_SEQ_LENGTH", "2048"))
-
-# Ensure results directory exists
-Path(RESULTS_DIR).mkdir(parents=True, exist_ok=True)
-
-QLORA_MODEL_PATH = os.path.join(MODELS_DIR, "qlora_model")
+from common import (
+    Config,
+    setup_logging,
+    get_quantization_config,
+    format_prompt,
+    generate_response,
+    save_json,
+    print_header,
+    print_section,
+    get_vram_usage,
+    AUTOIMMUNE_QUESTIONS,
+)
 
 
-def load_qlora_model():
-    """
-    Load base model and QLoRA adapters.
+def load_finetuned_model(logger):
+    """Load base model and fine-tuned adapters (DoRA or QLoRA)."""
+    # Check for DoRA model first (newer), then QLoRA (legacy)
+    dora_path = Config.MODELS_DIR / "dora_model"
+    qlora_path = Config.MODELS_DIR / "qlora_model"
     
-    Returns:
-        Tuple of (model, tokenizer)
-    """
-    if not os.path.exists(QLORA_MODEL_PATH):
-        print(f"ERROR: QLoRA model not found at {QLORA_MODEL_PATH}")
-        print("Please run script 4 first to train the QLoRA model.")
+    adapter_path = None
+    adapter_type = None
+    
+    if dora_path.exists():
+        adapter_path = dora_path
+        adapter_type = "DoRA"
+    elif qlora_path.exists():
+        adapter_path = qlora_path
+        adapter_type = "QLoRA"
+    else:
+        logger.error(f"No fine-tuned model found")
+        print(f"✗ ERROR: No fine-tuned model found")
+        print("  Checked for:")
+        print(f"    - {dora_path}")
+        print(f"    - {qlora_path}")
+        print("Please run script 4 first to train the model.")
         sys.exit(1)
     
-    print(f"Loading base model: {MODEL_NAME}...")
+    print(f"Loading base model: {Config.MODEL_NAME}...")
+    logger.info(f"Loading base model: {Config.MODEL_NAME}")
+    
+    # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
-        MODEL_NAME,
+        Config.MODEL_NAME,
         trust_remote_code=True
     )
     
+    # Load base model with quantization
     base_model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        torch_dtype=torch.bfloat16,
+        Config.MODEL_NAME,
+        quantization_config=get_quantization_config(),
+        dtype=torch.bfloat16,
         device_map="auto",
         trust_remote_code=True,
-        load_in_4bit=True,
-        max_length=MAX_SEQ_LENGTH
     )
     
-    print(f"Loading QLoRA adapters from {QLORA_MODEL_PATH}...")
-    model = PeftModel.from_pretrained(base_model, QLORA_MODEL_PATH)
+    # Load adapters
+    print(f"Loading {adapter_type} adapters from {adapter_path}...")
+    logger.info(f"Loading {adapter_type} adapters from {adapter_path}")
     
-    # Merge adapters for inference (optional, but can improve speed)
-    # model = model.merge_and_unload()
+    model = PeftModel.from_pretrained(base_model, adapter_path)
     
-    return model, tokenizer
+    vram = get_vram_usage()
+    print(f"✓ Model loaded ({adapter_type}), VRAM: {vram['allocated']:.2f} GB")
+    logger.info(f"Model loaded ({adapter_type}), VRAM: {vram['allocated']:.2f} GB")
+    
+    return model, tokenizer, adapter_type
 
 
-def get_model_response(model, tokenizer, question: str):
-    """
-    Get response from QLoRA model.
-    
-    Args:
-        model: The QLoRA model
-        tokenizer: The tokenizer
-        question: Question text
-    
-    Returns:
-        Tuple[str, float]: Response text and generation time
-    """
-    prompt = f"User: {question}RetryRMfinish"
-    
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    
-    start_time = time.time()
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=1024,
-            temperature=0.7,
-            do_sample=True,
-            pad_token_id=tokenizer.eos_token_id
-        )
-    generation_time = time.time() - start_time
-    
-    full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    response = full_response[len(prompt):].strip()
-    
-    return response, generation_time
-
-
-def run_benchmark(model, tokenizer):
-    """
-    Run benchmark on all questions.
-    
-    Args:
-        model: The QLoRA model
-        tokenizer: The tokenizer
-    
-    Returns:
-        List of result dictionaries
-    """
+def run_benchmark(model, tokenizer, logger, adapter_type: str = "finetuned") -> list:
+    """Run benchmark on all questions."""
     results = []
+    total_questions = len(AUTOIMMUNE_QUESTIONS)
     
-    print(f"\n{'='*60}")
-    print(f"Running QLoRA Benchmark: {len(AUTOIMMUNE_QUESTIONS)} Questions")
-    print(f"{'='*60}\n")
+    print_section(f"Running Fine-Tuned Model Benchmark: {total_questions} Questions")
     
     for i, question_data in enumerate(AUTOIMMUNE_QUESTIONS, 1):
-        print(f"[{i}/{len(AUTOIMMUNE_QUESTIONS)}] {question_data['id']}: {question_data['category']}")
+        print(f"\n[{i}/{total_questions}] {question_data['id']}: {question_data['category']}")
         print(f"Difficulty: {question_data['difficulty']}")
-        print(f"Question: {question_data['question'][:100]}...")
+        print(f"Question: {question_data['question'][:80]}...")
+        
+        logger.info(f"Processing {question_data['id']}: {question_data['category']}")
         
         try:
-            response, gen_time = get_model_response(
-                model, tokenizer, question_data['question']
+            prompt = format_prompt(question_data['question'])
+            response, gen_time, tokens = generate_response(
+                model, tokenizer, prompt,
+                max_new_tokens=1024,
+                temperature=0.7
             )
             
             result = {
@@ -208,14 +125,21 @@ def run_benchmark(model, tokenizer):
                 "question": question_data['question'],
                 "response": response,
                 "time_seconds": round(gen_time, 2),
-                "timestamp": datetime.now().isoformat()
+                "input_tokens": tokens['input_tokens'],
+                "output_tokens": tokens['output_tokens'],
+                "word_count": len(response.split()),
+                "timestamp": datetime.now().isoformat(),
+                "model_type": adapter_type.lower() if 'adapter_type' in locals() else "finetuned"
             }
             
             results.append(result)
-            print(f"✓ Completed in {gen_time:.2f}s\n")
+            print(f"✓ Completed in {gen_time:.2f}s ({tokens['output_tokens']} tokens)")
+            logger.info(f"Completed {question_data['id']} in {gen_time:.2f}s")
             
         except Exception as e:
-            print(f"✗ Error: {str(e)}\n")
+            logger.error(f"Error on {question_data['id']}: {str(e)}")
+            print(f"✗ Error: {str(e)}")
+            
             result = {
                 "id": question_data['id'],
                 "category": question_data['category'],
@@ -223,59 +147,64 @@ def run_benchmark(model, tokenizer):
                 "question": question_data['question'],
                 "response": f"ERROR: {str(e)}",
                 "time_seconds": 0.0,
-                "timestamp": datetime.now().isoformat()
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "word_count": 0,
+                "timestamp": datetime.now().isoformat(),
+                "model_type": adapter_type.lower(),
+                "error": True
             }
             results.append(result)
     
     return results
 
 
-def save_results(results, filename):
-    """Save results to JSON file."""
-    filepath = os.path.join(RESULTS_DIR, filename)
-    with open(filepath, 'w') as f:
-        json.dump(results, f, indent=2)
-    print(f"✓ Results saved to {filepath}")
-
-
-def print_summary(results):
+def print_summary(results: list):
     """Print summary statistics."""
-    print(f"\n{'='*60}")
-    print("QLORA BENCHMARK SUMMARY")
-    print(f"{'='*60}\n")
+    print_section("FINE-TUNED MODEL BENCHMARK SUMMARY")
     
-    total_time = sum(r['time_seconds'] for r in results)
-    avg_time = total_time / len(results) if results else 0
+    successful = [r for r in results if not r.get('error')]
+    
+    total_time = sum(r['time_seconds'] for r in successful)
+    avg_time = total_time / len(successful) if successful else 0
+    avg_words = sum(r['word_count'] for r in successful) / len(successful) if successful else 0
     
     print(f"Total Questions: {len(results)}")
-    print(f"Total Time: {total_time:.2f} seconds")
-    print(f"Average Time per Question: {avg_time:.2f} seconds")
+    print(f"Successful: {len(successful)}")
+    print(f"Total Time: {total_time:.2f}s")
+    print(f"Average Time: {avg_time:.2f}s")
+    print(f"Average Word Count: {avg_words:.0f}")
 
 
 def main():
     """Main execution function."""
-    print("\n" + "="*60)
-    print("SCRIPT 5: TEST QLORA MODEL")
-    print("="*60 + "\n")
+    print_header("SCRIPT 5: TEST FINE-TUNED MODEL")
+    
+    # Setup
+    logger = setup_logging("5_test_finetuned")
+    Config.ensure_directories()
     
     try:
-        # Load QLoRA model
-        model, tokenizer = load_qlora_model()
+        # Load fine-tuned model (DoRA or QLoRA)
+        model, tokenizer, adapter_type = load_finetuned_model(logger)
         
         # Run benchmark
-        results = run_benchmark(model, tokenizer)
+        results = run_benchmark(model, tokenizer, logger, adapter_type)
         
         # Save results
-        save_results(results, "qlora_results.json")
+        output_file = Config.RESULTS_DIR / "finetuned_results.json"
+        save_json(results, output_file)
+        print(f"\n✓ Results saved to {output_file}")
+        logger.info(f"Results saved to {output_file}")
         
         # Print summary
         print_summary(results)
         
-        print("\n" + "="*60)
-        print("✓ Script 5 completed successfully!")
-        print("="*60 + "\n")
+        print_header("✓ Script 5 completed successfully!")
+        logger.info("Script completed successfully")
         
     except Exception as e:
+        logger.error(f"Error: {str(e)}", exc_info=True)
         print(f"\n✗ Error: {str(e)}")
         import traceback
         traceback.print_exc()
@@ -284,4 +213,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

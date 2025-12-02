@@ -1,8 +1,0 @@
-Model: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
-Max Sequence Length: 2048
-CUDA Available: True
-GPU: NVIDIA GeForce RTX 3090
-VRAM Used: 5.46 GB
-Model Type: Qwen2ForCausalLM
-Tokenizer Type: LlamaTokenizerFast
-Vocab Size: 151665

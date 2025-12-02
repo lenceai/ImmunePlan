@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Script 1: Download and Test Model
-Version: 1.0.0
+Version: 1.1.0
 
-Purpose: Download DeepSeek-R1-Distill-Qwen-8B model and run basic inference test.
+Purpose: Download DeepSeek-R1-Distill-Qwen-7B model and run basic inference test.
 
 Usage:
     python scripts/1_download_and_test.py
@@ -14,167 +14,139 @@ Output:
     - Prints inference test results to console
 """
 
-import os
 import sys
-import time
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from dotenv import load_dotenv
+from pathlib import Path
 
-# Load environment variables
-load_dotenv()
+# Add scripts directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
 
-MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-ai/DeepSeek-R1-Distill-Qwen-8B")
-MAX_SEQ_LENGTH = int(os.getenv("MAX_SEQ_LENGTH", "2048"))
-
-
-def check_cuda():
-    """Check CUDA availability and print GPU information."""
-    if not torch.cuda.is_available():
-        print("WARNING: CUDA is not available. Model will run on CPU (very slow).")
-        return False
-    
-    print(f"✓ CUDA Available: {torch.cuda.is_available()}")
-    print(f"✓ CUDA Version: {torch.version.cuda}")
-    print(f"✓ GPU: {torch.cuda.get_device_name(0)}")
-    print(f"✓ VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
-    return True
+from common import (
+    Config,
+    setup_logging,
+    check_cuda,
+    print_cuda_info,
+    load_model_and_tokenizer,
+    format_prompt,
+    generate_response,
+    get_vram_usage,
+    print_header,
+    confirm_continue,
+)
 
 
-def download_and_load_model():
-    """
-    Download and load the model with 4-bit quantization.
-    
-    Returns:
-        Tuple[AutoModelForCausalLM, AutoTokenizer]: Model and tokenizer
-    """
-    print(f"\n{'='*60}")
-    print(f"Downloading model: {MODEL_NAME}")
-    print(f"{'='*60}\n")
-    
-    # Load tokenizer
-    print("Loading tokenizer...")
-    tokenizer = AutoTokenizer.from_pretrained(
-        MODEL_NAME,
-        trust_remote_code=True
-    )
-    
-    # Load model with 4-bit quantization
-    print("Loading model with 4-bit quantization...")
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-        trust_remote_code=True,
-        load_in_4bit=True,
-        max_length=MAX_SEQ_LENGTH
-    )
-    
-    # Print model info
-    if torch.cuda.is_available():
-        vram_used = torch.cuda.memory_allocated(0) / 1024**3
-        print(f"\n✓ Model loaded successfully")
-        print(f"✓ VRAM Used: {vram_used:.2f} GB")
-    
-    return model, tokenizer
-
-
-def test_inference(model, tokenizer, prompt: str):
-    """
-    Run inference test on the model.
-    
-    Args:
-        model: The loaded model
-        tokenizer: The tokenizer
-        prompt: Input prompt text
-    
-    Returns:
-        str: Generated response
-    """
-    print(f"\n{'='*60}")
-    print("Running Inference Test")
-    print(f"{'='*60}\n")
-    print(f"Prompt: {prompt[:100]}...\n")
-    
-    # Tokenize input
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    
-    # Generate response
-    start_time = time.time()
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=512,
-            temperature=0.7,
-            do_sample=True,
-            pad_token_id=tokenizer.eos_token_id
-        )
-    generation_time = time.time() - start_time
-    
-    # Decode response
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
-    # Calculate metrics
-    input_tokens = inputs['input_ids'].shape[1]
-    output_tokens = outputs.shape[1] - input_tokens
-    tokens_per_second = output_tokens / generation_time if generation_time > 0 else 0
-    
-    print(f"Response:\n{response[len(prompt):]}\n")
-    print(f"Generation Time: {generation_time:.2f} seconds")
-    print(f"Input Tokens: {input_tokens}")
-    print(f"Output Tokens: {output_tokens}")
-    print(f"Tokens/Second: {tokens_per_second:.2f}")
-    
-    return response, generation_time, tokens_per_second
-
-
-def save_model_info(model, tokenizer):
+def save_model_info(model, tokenizer, test_results: dict):
     """Save model information to file."""
-    info_file = "model_info.txt"
+    import torch
+    
+    info_file = Path("model_info.txt")
+    
     with open(info_file, "w") as f:
-        f.write(f"Model: {MODEL_NAME}\n")
-        f.write(f"Max Sequence Length: {MAX_SEQ_LENGTH}\n")
+        f.write("=" * 60 + "\n")
+        f.write("AUTOIMMUNE LLM - MODEL INFORMATION\n")
+        f.write("=" * 60 + "\n\n")
+        
+        f.write(f"Model: {Config.MODEL_NAME}\n")
+        f.write(f"Max Sequence Length: {Config.MAX_SEQ_LENGTH}\n")
+        f.write(f"Quantization: 4-bit NF4\n")
+        f.write(f"Dtype: bfloat16\n\n")
+        
+        f.write("HARDWARE\n")
+        f.write("-" * 30 + "\n")
         f.write(f"CUDA Available: {torch.cuda.is_available()}\n")
         if torch.cuda.is_available():
             f.write(f"GPU: {torch.cuda.get_device_name(0)}\n")
-            f.write(f"VRAM Used: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB\n")
+            f.write(f"CUDA Version: {torch.version.cuda}\n")
+            vram = get_vram_usage()
+            f.write(f"VRAM Allocated: {vram['allocated']:.2f} GB\n")
+            f.write(f"VRAM Total: {vram['total']:.2f} GB\n")
+        f.write("\n")
+        
+        f.write("MODEL INFO\n")
+        f.write("-" * 30 + "\n")
         f.write(f"Model Type: {type(model).__name__}\n")
         f.write(f"Tokenizer Type: {type(tokenizer).__name__}\n")
-        f.write(f"Vocab Size: {len(tokenizer)}\n")
+        f.write(f"Vocab Size: {len(tokenizer)}\n\n")
+        
+        f.write("INFERENCE TEST\n")
+        f.write("-" * 30 + "\n")
+        f.write(f"Generation Time: {test_results['time']:.2f}s\n")
+        f.write(f"Input Tokens: {test_results['tokens']['input_tokens']}\n")
+        f.write(f"Output Tokens: {test_results['tokens']['output_tokens']}\n")
+        f.write(f"Tokens/Second: {test_results['tokens_per_second']:.2f}\n")
     
-    print(f"\n✓ Model info saved to {info_file}")
+    print(f"✓ Model info saved to {info_file}")
 
 
 def main():
     """Main execution function."""
-    print("\n" + "="*60)
-    print("SCRIPT 1: DOWNLOAD AND TEST MODEL")
-    print("="*60 + "\n")
+    print_header("SCRIPT 1: DOWNLOAD AND TEST MODEL")
+    
+    # Setup logging
+    logger = setup_logging("1_download_and_test")
+    logger.info(f"Starting script with model: {Config.MODEL_NAME}")
     
     # Check CUDA
-    cuda_available = check_cuda()
-    if not cuda_available:
-        response = input("\nContinue without CUDA? (y/n): ")
-        if response.lower() != 'y':
+    cuda_info = print_cuda_info(logger)
+    
+    if not cuda_info["available"]:
+        logger.warning("CUDA not available - model will run on CPU (very slow)")
+        if not confirm_continue("Continue without CUDA?"):
             sys.exit(1)
     
     try:
         # Download and load model
-        model, tokenizer = download_and_load_model()
+        print_header(f"Downloading model: {Config.MODEL_NAME}", char="-")
         
-        # Test inference with medical prompt
-        test_prompt = """<｜begin▁of▁sentence｜>User: What are the key diagnostic criteria for systemic lupus erythematosus (SLE)? Please explain the ACR classification criteria.RetryRMfinish"""
+        print("Loading tokenizer...")
+        logger.info("Loading tokenizer...")
         
-        response, gen_time, tokens_per_sec = test_inference(model, tokenizer, test_prompt)
+        model, tokenizer = load_model_and_tokenizer(quantize=True)
+        
+        vram = get_vram_usage()
+        print(f"\n✓ Model loaded successfully")
+        print(f"✓ VRAM Used: {vram['allocated']:.2f} GB")
+        logger.info(f"Model loaded, VRAM: {vram['allocated']:.2f} GB")
+        
+        # Test inference
+        print_header("Running Inference Test", char="-")
+        
+        test_question = "What are the key diagnostic criteria for systemic lupus erythematosus (SLE)? Please explain the ACR/EULAR classification criteria briefly."
+        prompt = format_prompt(test_question)
+        
+        print(f"Prompt: {test_question[:80]}...\n")
+        
+        response, gen_time, tokens = generate_response(
+            model, tokenizer, prompt,
+            max_new_tokens=512,
+            temperature=0.7
+        )
+        
+        tokens_per_second = tokens['output_tokens'] / gen_time if gen_time > 0 else 0
+        
+        print(f"\nResponse:\n{'-' * 40}")
+        print(response[:500] + "..." if len(response) > 500 else response)
+        print(f"{'-' * 40}\n")
+        
+        print(f"Generation Time: {gen_time:.2f}s")
+        print(f"Input Tokens: {tokens['input_tokens']}")
+        print(f"Output Tokens: {tokens['output_tokens']}")
+        print(f"Tokens/Second: {tokens_per_second:.2f}")
+        
+        logger.info(f"Inference test completed: {gen_time:.2f}s, {tokens_per_second:.2f} tok/s")
         
         # Save model info
-        save_model_info(model, tokenizer)
+        test_results = {
+            "time": gen_time,
+            "tokens": tokens,
+            "tokens_per_second": tokens_per_second
+        }
+        save_model_info(model, tokenizer, test_results)
         
-        print("\n" + "="*60)
-        print("✓ Script 1 completed successfully!")
-        print("="*60 + "\n")
+        print_header("✓ Script 1 completed successfully!")
+        logger.info("Script completed successfully")
         
     except Exception as e:
+        logger.error(f"Error: {str(e)}", exc_info=True)
         print(f"\n✗ Error: {str(e)}")
         import traceback
         traceback.print_exc()
@@ -183,4 +155,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

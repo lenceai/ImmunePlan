@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script 2: Autoimmune Benchmark Questions
-Version: 1.0.0
+Version: 1.1.0
 
 Purpose: Test model with comprehensive autoimmune disease benchmark questions.
 
@@ -12,179 +12,56 @@ Output:
     - results/baseline_results.json: Benchmark results for baseline model
 """
 
-import os
 import sys
-import json
-import time
-from datetime import datetime
 from pathlib import Path
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from dotenv import load_dotenv
+from datetime import datetime
 
-# Load environment variables
-load_dotenv()
+# Add scripts directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
 
-MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-ai/DeepSeek-R1-Distill-Qwen-8B")
-RESULTS_DIR = os.getenv("RESULTS_DIR", "./results")
-MAX_SEQ_LENGTH = int(os.getenv("MAX_SEQ_LENGTH", "2048"))
-
-# Ensure results directory exists
-Path(RESULTS_DIR).mkdir(parents=True, exist_ok=True)
-
-
-# Comprehensive autoimmune disease questions
-AUTOIMMUNE_QUESTIONS = [
-    {
-        "id": "Q001",
-        "category": "Systemic Lupus Erythematosus",
-        "difficulty": "medium",
-        "question": "A 28-year-old woman presents with malar rash, photosensitivity, oral ulcers, and joint pain. Her ANA is positive at 1:640 with a speckled pattern, and anti-dsDNA antibodies are elevated. What is the most likely diagnosis, and what are the key diagnostic criteria you would use?"
-    },
-    {
-        "id": "Q002",
-        "category": "Rheumatoid Arthritis",
-        "difficulty": "medium",
-        "question": "A 45-year-old patient has symmetric polyarthritis affecting wrists, MCPs, and PIPs for 6 months, with morning stiffness lasting over 1 hour. RF and anti-CCP antibodies are positive. Explain the diagnostic criteria for rheumatoid arthritis and the significance of these serological markers."
-    },
-    {
-        "id": "Q003",
-        "category": "Sjogren's Syndrome",
-        "difficulty": "hard",
-        "question": "A 52-year-old woman complains of dry eyes and dry mouth for 2 years. Schirmer's test is abnormal, and she has positive anti-SSA/Ro and anti-SSB/La antibodies. What diagnostic criteria would you use to confirm Sjogren's syndrome, and what are the potential systemic complications?"
-    },
-    {
-        "id": "Q004",
-        "category": "Mixed Connective Tissue Disease",
-        "difficulty": "very_hard",
-        "question": "A patient has features of SLE, scleroderma, and polymyositis. Anti-RNP antibodies are strongly positive. What is the diagnosis, and how does this condition differ from overlap syndromes?"
-    },
-    {
-        "id": "Q005",
-        "category": "Polymyositis",
-        "difficulty": "hard",
-        "question": "A 40-year-old presents with progressive proximal muscle weakness, elevated CK, and positive anti-Jo-1 antibodies. What is the diagnosis, and what are the key features distinguishing polymyositis from dermatomyositis?"
-    },
-    {
-        "id": "Q006",
-        "category": "Systemic Sclerosis",
-        "difficulty": "hard",
-        "question": "A patient has Raynaud's phenomenon, skin thickening, and positive anti-Scl-70 antibodies. Explain the classification criteria for systemic sclerosis and the difference between limited and diffuse forms."
-    },
-    {
-        "id": "Q007",
-        "category": "Vasculitis",
-        "difficulty": "very_hard",
-        "question": "A patient presents with sinusitis, pulmonary nodules, and rapidly progressive glomerulonephritis. c-ANCA and PR3 antibodies are positive. What is the diagnosis, and what is the typical treatment approach?"
-    },
-    {
-        "id": "Q008",
-        "category": "Differential Diagnosis",
-        "difficulty": "very_hard",
-        "question": "A 35-year-old woman has fatigue, joint pain, positive ANA, and low complement levels. However, she also has hyperthyroidism and vitiligo. How would you differentiate between multiple autoimmune conditions versus a single systemic autoimmune disease?"
-    },
-    {
-        "id": "Q009",
-        "category": "Behçet's Disease",
-        "difficulty": "very_hard",
-        "question": "A patient has recurrent oral ulcers, genital ulcers, and uveitis. What are the diagnostic criteria for Behçet's disease, and what are the key features that distinguish it from other causes of oral and genital ulcers?"
-    },
-    {
-        "id": "Q010",
-        "category": "Drug-Induced Lupus",
-        "difficulty": "medium",
-        "question": "A patient on hydralazine for hypertension develops positive ANA and symptoms resembling SLE. What are the key differences between drug-induced lupus and idiopathic SLE, and how would you manage this case?"
-    }
-]
+from common import (
+    Config,
+    setup_logging,
+    load_model_and_tokenizer,
+    format_prompt,
+    generate_response,
+    save_json,
+    print_header,
+    print_section,
+    AUTOIMMUNE_QUESTIONS,
+)
 
 
-def load_model():
-    """
-    Load the model and tokenizer.
-    
-    Returns:
-        Tuple[Model, Tokenizer]: Model and tokenizer
-    """
-    print(f"Loading model: {MODEL_NAME}...")
-    tokenizer = AutoTokenizer.from_pretrained(
-        MODEL_NAME,
-        trust_remote_code=True
-    )
-    
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-        trust_remote_code=True,
-        load_in_4bit=True,
-        max_length=MAX_SEQ_LENGTH
-    )
-    
-    return model, tokenizer
-
-
-def get_model_response(model, tokenizer, question: str):
-    """
-    Get response from model for a given question.
-    
-    Args:
-        model: The model
-        tokenizer: The tokenizer
-        question: Question text
-    
-    Returns:
-        Tuple[str, float]: Response text and generation time in seconds
-    """
-    # Format prompt
-    prompt = f"<｜begin▁of▁sentence｜>User: {question}RetryRMfinish"
-    
-    # Tokenize
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    
-    # Generate
-    start_time = time.time()
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=1024,
-            temperature=0.7,
-            do_sample=True,
-            pad_token_id=tokenizer.eos_token_id
-        )
-    generation_time = time.time() - start_time
-    
-    # Decode
-    full_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    response = full_response[len(prompt):].strip()
-    
-    return response, generation_time
-
-
-def run_benchmark(model, tokenizer):
+def run_benchmark(model, tokenizer, logger) -> list:
     """
     Run benchmark on all questions.
     
     Args:
         model: The model
         tokenizer: The tokenizer
+        logger: Logger instance
     
     Returns:
-        List[Dict]: Results for each question
+        List of result dictionaries
     """
     results = []
+    total_questions = len(AUTOIMMUNE_QUESTIONS)
     
-    print(f"\n{'='*60}")
-    print(f"Running Benchmark: {len(AUTOIMMUNE_QUESTIONS)} Questions")
-    print(f"{'='*60}\n")
+    print_section(f"Running Benchmark: {total_questions} Questions")
     
     for i, question_data in enumerate(AUTOIMMUNE_QUESTIONS, 1):
-        print(f"[{i}/{len(AUTOIMMUNE_QUESTIONS)}] {question_data['id']}: {question_data['category']}")
+        print(f"\n[{i}/{total_questions}] {question_data['id']}: {question_data['category']}")
         print(f"Difficulty: {question_data['difficulty']}")
-        print(f"Question: {question_data['question'][:100]}...")
+        print(f"Question: {question_data['question'][:80]}...")
+        
+        logger.info(f"Processing {question_data['id']}: {question_data['category']}")
         
         try:
-            response, gen_time = get_model_response(
-                model, tokenizer, question_data['question']
+            prompt = format_prompt(question_data['question'])
+            response, gen_time, tokens = generate_response(
+                model, tokenizer, prompt,
+                max_new_tokens=1024,
+                temperature=0.7
             )
             
             result = {
@@ -194,14 +71,20 @@ def run_benchmark(model, tokenizer):
                 "question": question_data['question'],
                 "response": response,
                 "time_seconds": round(gen_time, 2),
+                "input_tokens": tokens['input_tokens'],
+                "output_tokens": tokens['output_tokens'],
+                "word_count": len(response.split()),
                 "timestamp": datetime.now().isoformat()
             }
             
             results.append(result)
-            print(f"✓ Completed in {gen_time:.2f}s\n")
+            print(f"✓ Completed in {gen_time:.2f}s ({tokens['output_tokens']} tokens)")
+            logger.info(f"Completed {question_data['id']} in {gen_time:.2f}s")
             
         except Exception as e:
-            print(f"✗ Error: {str(e)}\n")
+            logger.error(f"Error on {question_data['id']}: {str(e)}")
+            print(f"✗ Error: {str(e)}")
+            
             result = {
                 "id": question_data['id'],
                 "category": question_data['category'],
@@ -209,85 +92,92 @@ def run_benchmark(model, tokenizer):
                 "question": question_data['question'],
                 "response": f"ERROR: {str(e)}",
                 "time_seconds": 0.0,
-                "timestamp": datetime.now().isoformat()
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "word_count": 0,
+                "timestamp": datetime.now().isoformat(),
+                "error": True
             }
             results.append(result)
     
     return results
 
 
-def save_results(results, filename):
-    """
-    Save results to JSON file.
-    
-    Args:
-        results: List of result dictionaries
-        filename: Output filename
-    """
-    filepath = os.path.join(RESULTS_DIR, filename)
-    with open(filepath, 'w') as f:
-        json.dump(results, f, indent=2)
-    print(f"✓ Results saved to {filepath}")
-
-
-def print_summary(results):
+def print_summary(results: list):
     """Print summary statistics."""
-    print(f"\n{'='*60}")
-    print("BENCHMARK SUMMARY")
-    print(f"{'='*60}\n")
+    print_section("BENCHMARK SUMMARY")
     
-    total_time = sum(r['time_seconds'] for r in results)
-    avg_time = total_time / len(results) if results else 0
+    successful = [r for r in results if not r.get('error')]
+    
+    total_time = sum(r['time_seconds'] for r in successful)
+    avg_time = total_time / len(successful) if successful else 0
+    avg_words = sum(r['word_count'] for r in successful) / len(successful) if successful else 0
     
     print(f"Total Questions: {len(results)}")
-    print(f"Total Time: {total_time:.2f} seconds")
-    print(f"Average Time per Question: {avg_time:.2f} seconds")
+    print(f"Successful: {len(successful)}")
+    print(f"Total Time: {total_time:.2f}s")
+    print(f"Average Time: {avg_time:.2f}s")
+    print(f"Average Word Count: {avg_words:.0f}")
     
-    # Count by difficulty
-    difficulty_counts = {}
-    for r in results:
+    # By difficulty
+    print("\nBy Difficulty:")
+    difficulties = {}
+    for r in successful:
         diff = r['difficulty']
-        difficulty_counts[diff] = difficulty_counts.get(diff, 0) + 1
+        if diff not in difficulties:
+            difficulties[diff] = []
+        difficulties[diff].append(r['time_seconds'])
     
-    print(f"\nBy Difficulty:")
-    for diff, count in sorted(difficulty_counts.items()):
-        print(f"  {diff}: {count}")
+    for diff, times in sorted(difficulties.items()):
+        avg = sum(times) / len(times)
+        print(f"  {diff}: {len(times)} questions, avg {avg:.2f}s")
     
-    # Count by category
-    category_counts = {}
-    for r in results:
+    # By category
+    print("\nBy Category:")
+    categories = {}
+    for r in successful:
         cat = r['category']
-        category_counts[cat] = category_counts.get(cat, 0) + 1
+        if cat not in categories:
+            categories[cat] = 0
+        categories[cat] += 1
     
-    print(f"\nBy Category:")
-    for cat, count in sorted(category_counts.items()):
+    for cat, count in sorted(categories.items()):
         print(f"  {cat}: {count}")
 
 
 def main():
     """Main execution function."""
-    print("\n" + "="*60)
-    print("SCRIPT 2: AUTOIMMUNE BENCHMARK QUESTIONS")
-    print("="*60 + "\n")
+    print_header("SCRIPT 2: AUTOIMMUNE BENCHMARK QUESTIONS")
+    
+    # Setup
+    logger = setup_logging("2_autoimmune_questions")
+    Config.ensure_directories()
+    
+    logger.info(f"Starting benchmark with model: {Config.MODEL_NAME}")
     
     try:
         # Load model
-        model, tokenizer = load_model()
+        print(f"Loading model: {Config.MODEL_NAME}...")
+        model, tokenizer = load_model_and_tokenizer(quantize=True)
+        logger.info("Model loaded successfully")
         
         # Run benchmark
-        results = run_benchmark(model, tokenizer)
+        results = run_benchmark(model, tokenizer, logger)
         
         # Save results
-        save_results(results, "baseline_results.json")
+        output_file = Config.RESULTS_DIR / "baseline_results.json"
+        save_json(results, output_file)
+        print(f"\n✓ Results saved to {output_file}")
+        logger.info(f"Results saved to {output_file}")
         
         # Print summary
         print_summary(results)
         
-        print("\n" + "="*60)
-        print("✓ Script 2 completed successfully!")
-        print("="*60 + "\n")
+        print_header("✓ Script 2 completed successfully!")
+        logger.info("Script completed successfully")
         
     except Exception as e:
+        logger.error(f"Error: {str(e)}", exc_info=True)
         print(f"\n✗ Error: {str(e)}")
         import traceback
         traceback.print_exc()
@@ -296,4 +186,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

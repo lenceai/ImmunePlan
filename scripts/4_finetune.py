@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-Script 4: QLoRA Fine-Tuning
-Version: 1.1.0
+Script 4: DoRA Fine-Tuning (Weight-Decomposed Low-Rank Adaptation)
+Version: 2.0.0
 
-Purpose: Fine-tune model using QLoRA (memory-efficient LoRA with 4-bit quantization).
+Purpose: Fine-tune model using DoRA with 4-bit quantization.
+         DoRA decomposes weights into magnitude and direction components,
+         often achieving better performance than LoRA while using similar memory.
 
 Usage:
-    python scripts/4_qlora_finetune.py
+    python scripts/4_finetune.py
 
 Input:
     - data/papers_training_data.json: Training data from script 3
 
 Output:
-    - models/qlora_model/: Trained LoRA adapters
-    - checkpoints/qlora_checkpoint/: Training checkpoints
+    - models/dora_model/: Trained DoRA adapters
+    - checkpoints/dora_checkpoint/: Training checkpoints
 """
 
 import sys
@@ -79,8 +81,9 @@ def load_training_data(logger) -> list:
 # =============================================================================
 
 def load_model_for_training(logger):
-    """Load model and tokenizer for QLoRA training."""
+    """Load model and tokenizer for DoRA training with 4-bit quantization."""
     print(f"\nLoading model: {Config.MODEL_NAME}...")
+    print("Using 4-bit quantization + DoRA for maximum parameter efficiency")
     logger.info(f"Loading model: {Config.MODEL_NAME}")
     
     # Tokenizer
@@ -105,21 +108,34 @@ def load_model_for_training(logger):
     model = prepare_model_for_kbit_training(model)
     
     vram = get_vram_usage()
-    print(f"✓ Model loaded, VRAM: {vram['allocated']:.2f} GB")
+    print(f"✓ Model loaded (4-bit), VRAM: {vram['allocated']:.2f} GB")
     logger.info(f"Model loaded, VRAM: {vram['allocated']:.2f} GB")
     
     return model, tokenizer
 
 
-def create_lora_config() -> LoraConfig:
-    """Create LoRA configuration."""
+def create_dora_config() -> LoraConfig:
+    """
+    Create DoRA configuration using LoraConfig with use_dora=True.
+    
+    DoRA (Weight-Decomposed Low-Rank Adaptation) decomposes weights into
+    magnitude and direction components, often outperforming LoRA while
+    using similar memory footprint.
+    
+    With 4-bit quantization, we can use higher rank to train more parameters.
+    """
     return LoraConfig(
-        r=16,
-        lora_alpha=32,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        r=32,  # Higher rank than standard LoRA (can train more params with 4-bit)
+        lora_alpha=64,  # Alpha = 2 * rank
+        target_modules=[
+            "q_proj", "k_proj", "v_proj", "o_proj",  # Attention
+            "gate_proj", "up_proj", "down_proj",      # MLP
+        ],
         lora_dropout=0.05,
         bias="none",
-        task_type=TaskType.CAUSAL_LM
+        task_type=TaskType.CAUSAL_LM,
+        use_rslora=False,  # Can enable RSLoRA for better performance
+        use_dora=True,      # Enable DoRA (Weight-Decomposed Low-Rank Adaptation)
     )
 
 
@@ -159,7 +175,7 @@ def prepare_dataset(texts: list, tokenizer, logger) -> Dataset:
 # =============================================================================
 
 def train_model(model, tokenizer, dataset, logger):
-    """Train the model with QLoRA."""
+    """Train the model with DoRA."""
     
     # Data collator
     data_collator = DataCollatorForLanguageModeling(
@@ -168,7 +184,7 @@ def train_model(model, tokenizer, dataset, logger):
     )
     
     # Output directory
-    output_dir = Config.CHECKPOINTS_DIR / "qlora_checkpoint"
+    output_dir = Config.CHECKPOINTS_DIR / "dora_checkpoint"
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Training arguments
@@ -185,7 +201,7 @@ def train_model(model, tokenizer, dataset, logger):
         save_total_limit=2,
         warmup_steps=50,
         lr_scheduler_type="cosine",
-        optim="paged_adamw_8bit",
+        optim="paged_adamw_8bit",  # 8-bit optimizer for memory efficiency
         gradient_checkpointing=True,
         report_to="none",
         dataloader_num_workers=0,
@@ -201,8 +217,10 @@ def train_model(model, tokenizer, dataset, logger):
     )
     
     # Print training info
-    print_section("STARTING QLORA TRAINING")
+    print_section("STARTING DORA TRAINING")
     effective_batch = Config.QLORA_BATCH_SIZE * 8
+    print(f"Method: DoRA (Weight-Decomposed Low-Rank Adaptation)")
+    print(f"Quantization: 4-bit NF4")
     print(f"Epochs: {Config.QLORA_EPOCHS}")
     print(f"Batch Size: {Config.QLORA_BATCH_SIZE}")
     print(f"Gradient Accumulation: 8")
@@ -211,7 +229,7 @@ def train_model(model, tokenizer, dataset, logger):
     print(f"Training Examples: {len(dataset)}")
     print(f"Total Steps: {len(dataset) // effective_batch * Config.QLORA_EPOCHS}")
     
-    logger.info(f"Starting training: {Config.QLORA_EPOCHS} epochs, {len(dataset)} examples")
+    logger.info(f"Starting DoRA training: {Config.QLORA_EPOCHS} epochs, {len(dataset)} examples")
     
     # Train
     trainer.train()
@@ -221,11 +239,11 @@ def train_model(model, tokenizer, dataset, logger):
 
 
 def save_model(model, tokenizer, logger):
-    """Save the trained LoRA model."""
-    output_path = Config.MODELS_DIR / "qlora_model"
+    """Save the trained DoRA model."""
+    output_path = Config.MODELS_DIR / "dora_model"
     output_path.mkdir(parents=True, exist_ok=True)
     
-    # Save LoRA adapters
+    # Save DoRA adapters
     model.save_pretrained(output_path)
     tokenizer.save_pretrained(output_path)
     
@@ -239,10 +257,10 @@ def save_model(model, tokenizer, logger):
 
 def main():
     """Main execution function."""
-    print_header("SCRIPT 4: QLORA FINE-TUNING")
+    print_header("SCRIPT 4: DORA FINE-TUNING (4-bit Quantized)")
     
     # Setup
-    logger = setup_logging("4_qlora_finetune")
+    logger = setup_logging("4_finetune")
     Config.ensure_directories()
     
     # Check CUDA
@@ -265,15 +283,17 @@ def main():
         # Load model
         model, tokenizer = load_model_for_training(logger)
         
-        # Apply LoRA
-        print("\nApplying LoRA adapters...")
-        lora_config = create_lora_config()
-        model = get_peft_model(model, lora_config)
+        # Apply DoRA
+        print("\nApplying DoRA adapters...")
+        print("DoRA decomposes weights into magnitude and direction for better performance")
+        dora_config = create_dora_config()
+        model = get_peft_model(model, dora_config)
         
         # Print trainable parameters
+        model.print_trainable_parameters()
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total_params = sum(p.numel() for p in model.parameters())
-        print(f"Trainable Parameters: {trainable_params:,} ({100 * trainable_params / total_params:.2f}%)")
+        print(f"\nTrainable Parameters: {trainable_params:,} ({100 * trainable_params / total_params:.2f}%)")
         logger.info(f"Trainable params: {trainable_params:,} / {total_params:,}")
         
         # Prepare dataset
@@ -307,3 +327,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
