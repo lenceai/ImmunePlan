@@ -1,0 +1,29 @@
+============================================================
+AUTOIMMUNE LLM - MODEL INFORMATION
+============================================================
+
+Model: nvidia/Nemotron-Cascade-8B-Thinking
+Max Sequence Length: 2048
+Quantization: 4-bit NF4
+Dtype: bfloat16
+
+HARDWARE
+------------------------------
+CUDA Available: True
+GPU: NVIDIA GeForce RTX 4080 Laptop GPU
+CUDA Version: 12.6
+VRAM Allocated: 5.67 GB
+VRAM Total: 11.60 GB
+
+MODEL INFO
+------------------------------
+Model Type: Qwen3ForCausalLM
+Tokenizer Type: Qwen2TokenizerFast
+Vocab Size: 151669
+
+INFERENCE TEST
+------------------------------
+Generation Time: 12.83s
+Input Tokens: 54
+Output Tokens: 512
+Tokens/Second: 39.91

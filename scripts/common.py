@@ -31,7 +31,7 @@ load_dotenv()
 class Config:
     """Centralized configuration management."""
     
-    MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B")
+    MODEL_NAME = os.getenv("MODEL_NAME", "nvidia/Nemotron-Cascade-8B-Thinking")
     MAX_SEQ_LENGTH = int(os.getenv("MAX_SEQ_LENGTH", "2048"))
     
     # Directories
@@ -44,6 +44,7 @@ class Config:
     # Training configs
     QLORA_EPOCHS = int(os.getenv("QLORA_EPOCHS", "3"))
     QLORA_BATCH_SIZE = int(os.getenv("QLORA_BATCH_SIZE", "2"))
+    QLORA_GRAD_ACCUM = int(os.getenv("QLORA_GRAD_ACCUM", "8"))
     QLORA_LR = float(os.getenv("QLORA_LR", "2e-4"))
     
     FULL_EPOCHS = int(os.getenv("FULL_EPOCHS", "3"))
@@ -238,7 +239,7 @@ def load_model_and_tokenizer(
     
     # Model loading kwargs
     model_kwargs = {
-        "dtype": torch.bfloat16,
+        "torch_dtype": torch.bfloat16,
         "device_map": device_map,
         "trust_remote_code": True,
     }
@@ -256,20 +257,88 @@ def load_model_and_tokenizer(
 # PROMPT FORMATTING
 # =============================================================================
 
-def format_prompt(question: str, system_prompt: Optional[str] = None) -> str:
+def format_prompt(question: str, system_prompt: Optional[str] = None, tokenizer: Optional[AutoTokenizer] = None, use_thinking: bool = True) -> str:
     """
-    Format a prompt for the DeepSeek model.
+    Format a prompt for the model. Supports multiple model formats:
+    - Nemotron-Cascade: Uses chat template with /think or /no_think tokens
+    - DeepSeek: Uses custom format with <｜begin▁of▁sentence｜> tokens
+    - Other models: Uses tokenizer's chat template if available
     
     Args:
         question: The user's question
         system_prompt: Optional system prompt
+        tokenizer: Optional tokenizer to use chat template
+        use_thinking: For Nemotron, use /think mode (True) or /no_think (False)
     
     Returns:
         Formatted prompt string
     """
+    model_name = Config.MODEL_NAME.lower()
+    
+    # Nemotron-Cascade models use /think or /no_think control tokens
+    if "nemotron" in model_name or "cascade" in model_name:
+        # Use tokenizer's chat template if available
+        if tokenizer and hasattr(tokenizer, 'apply_chat_template'):
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            
+            # Add thinking control token for Nemotron
+            if use_thinking:
+                question_with_think = f"/think {question}"
+            else:
+                question_with_think = f"/no_think {question}"
+            
+            messages.append({"role": "user", "content": question_with_think})
+            
+            try:
+                prompt = tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+                return prompt
+            except Exception:
+                # Fallback to manual format if chat template fails
+                pass
+        
+        # Fallback manual format for Nemotron
+        if use_thinking:
+            control_token = "/think"
+        else:
+            control_token = "/no_think"
+        
+        if system_prompt:
+            return f"<|system|>\n{system_prompt}<|user|>\n{control_token} {question}<|assistant|>\n"
+        return f"<|user|>\n{control_token} {question}<|assistant|>\n"
+    
+    # DeepSeek format (legacy)
+    elif "deepseek" in model_name:
+        if system_prompt:
+            return f"<｜begin▁of▁sentence｜>System: {system_prompt}\n\nUser: {question}\n\nAssistant:"
+        return f"<｜begin▁of▁sentence｜>User: {question}\n\nAssistant:"
+    
+    # Try to use tokenizer's chat template for other models
+    elif tokenizer and hasattr(tokenizer, 'apply_chat_template'):
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": question})
+        
+        try:
+            prompt = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
+            return prompt
+        except Exception:
+            pass
+    
+    # Default fallback format
     if system_prompt:
-        return f"<｜begin▁of▁sentence｜>System: {system_prompt}\n\nUser: {question}\n\nAssistant:"
-    return f"<｜begin▁of▁sentence｜>User: {question}\n\nAssistant:"
+        return f"System: {system_prompt}\n\nUser: {question}\n\nAssistant:"
+    return f"User: {question}\n\nAssistant:"
 
 
 def extract_response(full_output: str, prompt: str) -> str:
@@ -305,7 +374,8 @@ def generate_response(
     max_new_tokens: int = 1024,
     temperature: float = 0.7,
     top_p: float = 0.9,
-    do_sample: bool = True
+    do_sample: bool = True,
+    use_thinking: bool = True
 ) -> Tuple[str, float, Dict[str, int]]:
     """
     Generate a response from the model.

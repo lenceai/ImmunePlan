@@ -78,7 +78,7 @@ def load_finetuned_model(logger):
     base_model = AutoModelForCausalLM.from_pretrained(
         Config.MODEL_NAME,
         quantization_config=get_quantization_config(),
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
         device_map="auto",
         trust_remote_code=True,
     )
@@ -111,7 +111,7 @@ def run_benchmark(model, tokenizer, logger, adapter_type: str = "finetuned") -> 
         logger.info(f"Processing {question_data['id']}: {question_data['category']}")
         
         try:
-            prompt = format_prompt(question_data['question'])
+            prompt = format_prompt(question_data['question'], tokenizer=tokenizer)
             response, gen_time, tokens = generate_response(
                 model, tokenizer, prompt,
                 max_new_tokens=1024,

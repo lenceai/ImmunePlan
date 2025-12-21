@@ -1,44 +1,36 @@
 #!/bin/bash
 
+set -euo pipefail
+
 echo "========================================="
 echo "AUTOIMMUNE LLM FINE-TUNING PIPELINE"
 echo "========================================="
 echo ""
 
-# Always activate conda environment 'Plan' before running anything
-echo "Activating conda environment 'Plan'..."
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$PROJECT_ROOT"
 
-# Check if conda is available
-if ! command -v conda &> /dev/null; then
-    echo "ERROR: conda is not installed or not in PATH"
-    echo "Please install Miniconda or Anaconda first."
-    exit 1
-fi
-
-# Initialize conda for bash shell
-eval "$(conda shell.bash hook)"
-
-# Activate Plan environment
-if conda env list | grep -q "^Plan "; then
-    conda activate Plan
-    echo "✓ Conda environment 'Plan' activated"
+# Auto-activate venv if present (recommended). Set VENV_DIR to override.
+VENV_DIR="${VENV_DIR:-.venv}"
+USE_VENV="${USE_VENV:-0}"
+if [ "$USE_VENV" = "1" ]; then
+    if [ -f "${VENV_DIR}/bin/activate" ]; then
+        echo "Activating venv: ${VENV_DIR}"
+        # shellcheck disable=SC1090
+        source "${VENV_DIR}/bin/activate"
+    else
+        echo "ERROR: USE_VENV=1 but venv not found at ${VENV_DIR}."
+        echo "  Run: USE_VENV=1 ./setup.sh"
+        exit 1
+    fi
 else
-    echo "ERROR: Conda environment 'Plan' not found."
-    echo "Please run ./setup.sh first to create the environment."
-    exit 1
-fi
-
-# Verify environment is activated
-if [ "$CONDA_DEFAULT_ENV" != "Plan" ]; then
-    echo "ERROR: Failed to activate conda environment 'Plan'"
-    echo "Current environment: $CONDA_DEFAULT_ENV"
-    exit 1
+    echo "Using current Python environment (USE_VENV=0)."
 fi
 
 # Check if .env exists
 if [ ! -f .env ]; then
     echo "ERROR: .env file not found."
-    echo "Please copy .env.example to .env and configure it."
+    echo "Please run ./setup.sh (it will create .env) or create it manually."
     exit 1
 fi
 
@@ -98,17 +90,12 @@ echo "Step 6: Full Fine-Tuning (Optional)"
 echo "========================================="
 echo ""
 echo "This step requires significant VRAM (40GB+)."
-read -p "Run full fine-tuning? (y/n): " -n 1 -r
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+if [ "${RUN_FULL_FINETUNE:-0}" = "1" ]; then
+    echo "RUN_FULL_FINETUNE=1 set; running full fine-tuning."
     run_script "6" "full_finetune"
-    
-    # Step 7: Test full model (only if step 6 completed)
-    if [ $? -eq 0 ]; then
-        run_script "7" "test_full_model"
-    fi
+    run_script "7" "test_full_model"
 else
-    echo "Skipping full fine-tuning."
+    echo "Skipping full fine-tuning. (Set RUN_FULL_FINETUNE=1 to enable.)"
 fi
 
 # Step 8: Score and compare

@@ -22,39 +22,30 @@
    pip install torch==2.7.1 torchvision==0.20.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu118
    ```
 
-#### Problem: Conda environment not activating
-**Symptoms:** Python packages not found or conda command not found
+#### Problem: Python environment not activating / packages not found
+**Symptoms:** `ModuleNotFoundError` (e.g. `transformers`), or scripts run with the wrong Python
 
 **Solutions:**
-1. Ensure conda is installed:
+1. If you are using a venv, activate it:
    ```bash
-   conda --version
+   source .venv/bin/activate
    ```
-   If not installed, download from: https://docs.conda.io/en/latest/miniconda.html
+   (Or rerun setup with `USE_VENV=1 ./setup.sh`.)
 
-2. Activate conda environment:
+2. Verify you’re using the expected Python and that dependencies are installed:
    ```bash
-   conda activate Plan
-   ```
-
-3. If environment doesn't exist, run setup:
-   ```bash
-   ./setup.sh
+   which python
+   python -c "import transformers; print(transformers.__version__)"
    ```
 
-4. Or create manually from environment.yml:
+3. Reinstall dependencies if needed:
    ```bash
-   conda env create -f environment.yml
-   conda activate Plan
+   python -m pip install -r requirements.txt
    ```
 
-5. If conda command not found, initialize conda for your shell:
+4. If you want to recreate the venv from scratch:
    ```bash
-   # For bash
-   eval "$(conda shell.bash hook)"
-   
-   # For zsh
-   eval "$(conda shell.zsh hook)"
+   USE_VENV=1 RECREATE_VENV=1 ./setup.sh
    ```
 
 ---

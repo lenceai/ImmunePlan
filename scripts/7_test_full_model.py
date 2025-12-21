@@ -60,7 +60,7 @@ def load_full_model(logger):
     # Load model
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
         device_map="auto",
         trust_remote_code=True,
     )
@@ -87,7 +87,7 @@ def run_benchmark(model, tokenizer, logger) -> list:
         logger.info(f"Processing {question_data['id']}: {question_data['category']}")
         
         try:
-            prompt = format_prompt(question_data['question'])
+            prompt = format_prompt(question_data['question'], tokenizer=tokenizer)
             response, gen_time, tokens = generate_response(
                 model, tokenizer, prompt,
                 max_new_tokens=1024,

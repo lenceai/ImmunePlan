@@ -1,7 +1,22 @@
 #!/bin/bash
-cd ~/ImmunePlan
-source ~/anaconda3/etc/profile.d/conda.sh 2>/dev/null || source ~/miniconda3/etc/profile.d/conda.sh 2>/dev/null
-conda activate Plan
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$PROJECT_ROOT"
+
+# Optional venv activation
+VENV_DIR="${VENV_DIR:-.venv}"
+USE_VENV="${USE_VENV:-0}"
+if [ "$USE_VENV" = "1" ]; then
+  if [ -f "${VENV_DIR}/bin/activate" ]; then
+    # shellcheck disable=SC1090
+    source "${VENV_DIR}/bin/activate"
+  else
+    echo "ERROR: USE_VENV=1 but venv not found at ${VENV_DIR}."
+    echo "  Run: USE_VENV=1 ./setup.sh"
+    exit 1
+  fi
+fi
 export PORT=5000
 export HOST=0.0.0.0
 python api.py

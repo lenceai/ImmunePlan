@@ -3,7 +3,7 @@
 Script 1: Download and Test Model
 Version: 1.1.0
 
-Purpose: Download DeepSeek-R1-Distill-Qwen-7B model and run basic inference test.
+Purpose: Download model (default: nvidia/Nemotron-Cascade-8B-Thinking) and run basic inference test.
 
 Usage:
     python scripts/1_download_and_test.py
@@ -111,7 +111,7 @@ def main():
         print_header("Running Inference Test", char="-")
         
         test_question = "What are the key diagnostic criteria for systemic lupus erythematosus (SLE)? Please explain the ACR/EULAR classification criteria briefly."
-        prompt = format_prompt(test_question)
+        prompt = format_prompt(test_question, tokenizer=tokenizer)
         
         print(f"Prompt: {test_question[:80]}...\n")
         

@@ -1,6 +1,6 @@
 # Autoimmune Disease Diagnosis LLM Fine-Tuning
 
-Complete pipeline for fine-tuning DeepSeek-R1-Distill-Qwen-8B on autoimmune disease research papers and evaluating performance on clinical benchmark questions.
+Complete pipeline for fine-tuning nvidia/Nemotron-Cascade-8B-Thinking on autoimmune disease research papers and evaluating performance on clinical benchmark questions.
 
 ## Features
 
@@ -16,20 +16,22 @@ Complete pipeline for fine-tuning DeepSeek-R1-Distill-Qwen-8B on autoimmune dise
 
 ### Prerequisites
 
-- Conda (Miniconda or Anaconda)
 - NVIDIA GPU with CUDA 12.8 support (for training)
-- Python 3.13
+- Python 3.10+ (recommended: 3.11+)
 
 ### 1. Setup
 
 ```bash
 chmod +x setup.sh
 ./setup.sh
-conda activate Plan
+# (Optional, recommended) use venv:
+# USE_VENV=1 ./setup.sh
+# source .venv/bin/activate
 ```
 
 The setup script will:
-- Create a conda environment named `Plan` with Python 3.13
+- Install dependencies into your current Python environment by default (Conda `(base)` is fine)
+- Optionally create a Python virtual environment at `.venv` (set `USE_VENV=1`)
 - Install PyTorch 2.7.1 with CUDA 12.8 support via pip
 - Install all required dependencies via pip
 - Create necessary directories
@@ -45,11 +47,10 @@ PUBMED_EMAIL=your.email@example.com
 
 ```bash
 chmod +x run_all.sh
-conda activate Plan
 ./run_all.sh
 ```
 
-**Note:** The `run_all.sh` script will automatically activate the `Plan` conda environment before running. However, it's recommended to manually activate it first: `conda activate Plan`
+**Note:** The scripts run in your current environment by default. If you want to force using `.venv`, run with `USE_VENV=1` (and make sure `.venv` exists).
 
 ## Hardware Requirements
 
@@ -119,8 +120,9 @@ Modify `MODEL_NAME` in `.env` to use different model.
 
 ### Out of Memory Errors
 
-- Reduce `batch_size` in training scripts
-- Increase `gradient_accumulation_steps`
+- Reduce `QLORA_BATCH_SIZE` in `.env` (try `1`)
+- Increase `QLORA_GRAD_ACCUM` in `.env` to keep effective batch size similar (e.g. `16`)
+- Reduce `MAX_SEQ_LENGTH` in `.env` (try `1024` if still OOM)
 - Use 4-bit quantization for inference
 
 ### Slow Training

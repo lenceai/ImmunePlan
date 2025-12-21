@@ -26,6 +26,8 @@ data/*.csv
 data/*.txt
 data/ 
 
+logs/
+
 # Results
 results/
 logs/

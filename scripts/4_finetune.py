@@ -99,13 +99,17 @@ def load_model_for_training(logger):
     model = AutoModelForCausalLM.from_pretrained(
         Config.MODEL_NAME,
         quantization_config=get_quantization_config(),
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
         device_map="auto",
         trust_remote_code=True,
     )
     
     # Prepare for k-bit training
     model = prepare_model_for_kbit_training(model)
+    
+    # Extra safety: cache can blow up memory during training
+    if hasattr(model, "config") and getattr(model.config, "use_cache", None) is not None:
+        model.config.use_cache = False
     
     vram = get_vram_usage()
     print(f"✓ Model loaded (4-bit), VRAM: {vram['allocated']:.2f} GB")
@@ -151,7 +155,7 @@ def prepare_dataset(texts: list, tokenizer, logger) -> Dataset:
             examples["text"],
             truncation=True,
             max_length=Config.MAX_SEQ_LENGTH,
-            padding="max_length"
+            padding=False
         )
     
     # Create dataset
@@ -164,6 +168,12 @@ def prepare_dataset(texts: list, tokenizer, logger) -> Dataset:
         batched=True,
         remove_columns=["text"],
         desc="Tokenizing"
+    )
+    
+    # Add a length column to enable efficient bucketing (reduces padding/VRAM)
+    tokenized_dataset = tokenized_dataset.map(
+        lambda x: {"length": len(x["input_ids"])},
+        desc="Computing lengths"
     )
     
     logger.info(f"Dataset prepared: {len(tokenized_dataset)} examples")
@@ -192,7 +202,7 @@ def train_model(model, tokenizer, dataset, logger):
         output_dir=str(output_dir),
         num_train_epochs=Config.QLORA_EPOCHS,
         per_device_train_batch_size=Config.QLORA_BATCH_SIZE,
-        gradient_accumulation_steps=8,
+        gradient_accumulation_steps=Config.QLORA_GRAD_ACCUM,
         learning_rate=Config.QLORA_LR,
         bf16=True,
         logging_steps=10,
@@ -203,6 +213,7 @@ def train_model(model, tokenizer, dataset, logger):
         lr_scheduler_type="cosine",
         optim="paged_adamw_8bit",  # 8-bit optimizer for memory efficiency
         gradient_checkpointing=True,
+        group_by_length=True,
         report_to="none",
         dataloader_num_workers=0,
         remove_unused_columns=False,
@@ -218,12 +229,12 @@ def train_model(model, tokenizer, dataset, logger):
     
     # Print training info
     print_section("STARTING DORA TRAINING")
-    effective_batch = Config.QLORA_BATCH_SIZE * 8
+    effective_batch = Config.QLORA_BATCH_SIZE * Config.QLORA_GRAD_ACCUM
     print(f"Method: DoRA (Weight-Decomposed Low-Rank Adaptation)")
     print(f"Quantization: 4-bit NF4")
     print(f"Epochs: {Config.QLORA_EPOCHS}")
     print(f"Batch Size: {Config.QLORA_BATCH_SIZE}")
-    print(f"Gradient Accumulation: 8")
+    print(f"Gradient Accumulation: {Config.QLORA_GRAD_ACCUM}")
     print(f"Effective Batch Size: {effective_batch}")
     print(f"Learning Rate: {Config.QLORA_LR}")
     print(f"Training Examples: {len(dataset)}")
@@ -315,7 +326,10 @@ def main():
     except torch.cuda.OutOfMemoryError:
         logger.error("CUDA Out of Memory")
         print("\n✗ CUDA Out of Memory!")
-        print("Try reducing QLORA_BATCH_SIZE in .env file")
+        print("Try one or more of the following in your .env:")
+        print("  - QLORA_BATCH_SIZE=1")
+        print("  - Increase QLORA_GRAD_ACCUM (e.g. 16 or 32) to keep effective batch similar")
+        print("  - Reduce MAX_SEQ_LENGTH (e.g. 1024)")
         sys.exit(1)
     except Exception as e:
         logger.error(f"Error: {str(e)}", exc_info=True)
