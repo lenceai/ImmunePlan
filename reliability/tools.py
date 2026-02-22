@@ -72,6 +72,44 @@ class ToolResponse:
 
 
 @dataclass
+class ToolOutputValidation:
+    """
+    Validation rules for tool outputs.
+
+    Book concept: "Validate tool outputs — check that returned data is
+    within reasonable ranges before the agent uses the output."
+    """
+    required_keys: List[str] = field(default_factory=list)
+    value_ranges: Dict[str, tuple] = field(default_factory=dict)
+    max_response_size: int = 50000
+
+    def validate(self, data: Any) -> tuple:
+        """Returns (is_valid, issues)."""
+        issues = []
+        if data is None:
+            return False, ["Tool returned None"]
+
+        if isinstance(data, dict):
+            for key in self.required_keys:
+                if key not in data:
+                    issues.append(f"Missing required key: {key}")
+
+            for key, (low, high) in self.value_ranges.items():
+                if key in data:
+                    try:
+                        val = float(data[key])
+                        if val < low or val > high:
+                            issues.append(f"Value {key}={val} outside range [{low}, {high}]")
+                    except (ValueError, TypeError):
+                        pass
+
+        if isinstance(data, str) and len(data) > self.max_response_size:
+            issues.append(f"Response too large: {len(data)} chars")
+
+        return len(issues) == 0, issues
+
+
+@dataclass
 class ToolSchema:
     """Schema describing a tool for model understanding."""
     name: str
@@ -80,6 +118,7 @@ class ToolSchema:
     required_params: List[str]
     returns: str
     examples: List[Dict] = field(default_factory=list)
+    validation: Optional[ToolOutputValidation] = None
 
     def to_dict(self) -> Dict:
         return {

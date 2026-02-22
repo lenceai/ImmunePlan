@@ -287,7 +287,60 @@ api.py                   # REST API v2.0 with all reliability endpoints
 
 ---
 
-## The 10 Most Important Rules (from the book)
+## Advanced Capabilities (from detailed reference review)
+
+### Self-Consistency Prompting
+- Generate multiple outputs at moderate temperature
+- Aggregate via claim-overlap consistency scoring
+- Select the most consistent response as the final answer
+- Configurable parameter profiles: `factual`, `clinical_support`, `creative`, `self_consistency`
+
+### Formal Hallucination Metrics
+- **FActScore**: Break responses into atomic facts, verify each against context
+- **GDR (Grounding Defect Rate)**: Proportion of responses with ungrounded claims
+- **Hallucination Severity Score**: Distribution across none/low/medium/high
+
+### Red Teaming Framework
+8 adversarial test categories: fabricated drugs, fabricated studies, prescription requests, dangerous advice, PII elicitation, prompt injection, complex multi-hop, ambiguous queries
+
+### Agent Trajectory Analysis
+- Tool selection accuracy (did the agent pick the right tool?)
+- Reasoning quality (was the thought process sound?)
+- Execution efficiency (how many steps were needed?)
+- Safety check verification
+
+### Production Failure Pattern Detection
+Automated detection of 5 failure patterns:
+1. **Invisible drift** — week-over-week quality degradation
+2. **Cost explosion** — hourly cost spikes
+3. **Confident hallucination** — low groundedness with high confidence
+4. **Missing optimization** — underutilized semantic caching
+5. **Evaluation afterthought** — missing monitoring data
+
+### Name Experiment Bias Detection
+- Demographic test pairs across race, ethnicity, age/gender
+- Automated response comparison for length, detail, and quality parity
+- Bias direction detection
+
+### Tool Output Validation
+- Required key verification before agent uses tool output
+- Value range checking (e.g., temperature between -50 and 60)
+- Response size limits
+
+---
+
+## The Six Principles + 10 Rules
+
+### Six Principles of Reliable AI (from the book)
+
+1. **Ground outputs in verified information** — RAG + citations + "I don't know"
+2. **Constrain agents to safe actions** — least privilege + confirmation steps
+3. **Monitor systems continuously** — semantic quality, not just uptime
+4. **Treat all users fairly** — name experiment + fairness metrics
+5. **Protect user privacy** — PII detection + HIPAA/GDPR compliance
+6. **Build in evaluation from day one** — metrics before code
+
+### 10 Implementation Rules
 
 1. **Reliability is a systems property, not a model property**
 2. **Grounding beats confidence** — RAG/tools > "smart-sounding" answers
@@ -299,3 +352,16 @@ api.py                   # REST API v2.0 with all reliability endpoints
 8. **Monitor quality/cost/user outcomes, not just uptime**
 9. **Responsible AI controls belong in production architecture**
 10. **Start simple, instrument early, add complexity only when metrics justify it**
+
+---
+
+## Common Failure Patterns to Avoid
+
+| Pattern | Description | Our Mitigation |
+|---------|-------------|----------------|
+| "Works in the lab" trap | Great on test sets, fails on real queries | Red teaming + adversarial test suite |
+| "Invisible drift" | Gradual quality degradation unnoticed for weeks | Week-over-week comparison + drift alerts |
+| "Cost explosion" | Prompt change doubles monthly bill | Hourly cost tracking + per-token alerts |
+| "Confident hallucination" | Wrong answers with authoritative tone | FActScore + groundedness checking + GDR |
+| "Monolithic agent" | One agent trying to do everything | Multi-agent orchestrator + specialist routing |
+| "Evaluation afterthought" | Building system then adding tests last | Evaluation framework built before production code |
