@@ -370,10 +370,213 @@ def test_pipeline():
     print("  PASSED")
 
 
+def test_self_consistency():
+    """Test self-consistency prompting (new reference gap)."""
+    print("\n--- Self-Consistency Prompting ---")
+    from reliability.prompts import SelfConsistency, rephrase_query_for_retrieval, get_parameter_profile, PARAMETER_PROFILES
+
+    responses = [
+        "Rheumatoid arthritis is diagnosed using the 2010 ACR/EULAR classification criteria which evaluate joint involvement and serology.",
+        "RA diagnosis relies on the ACR/EULAR 2010 criteria considering joint involvement, serology markers like RF and anti-CCP, and inflammatory markers.",
+        "The diagnosis of rheumatoid arthritis uses classification criteria from ACR/EULAR evaluating joint involvement, serology, acute phase reactants, and duration.",
+    ]
+
+    result = SelfConsistency.aggregate_responses(responses, "diagnostic criteria for RA")
+    assert result["num_responses"] == 3
+    assert result["consistency_score"] >= 0
+    print(f"  Consistency score: {result['consistency_score']:.2f}")
+    print(f"  Selected response index: {result['selected_index']}")
+
+    variations = rephrase_query_for_retrieval("What are RA diagnostic criteria?")
+    assert len(variations) >= 1
+    print(f"  Query variations: {len(variations)}")
+    for v in variations:
+        print(f"    - {v[:80]}...")
+
+    profile = get_parameter_profile("diagnosis")
+    assert profile.temperature <= 0.3
+    print(f"  Diagnosis profile: temp={profile.temperature}, top_p={profile.top_p}")
+
+    assert len(PARAMETER_PROFILES) >= 4
+    print(f"  Available profiles: {list(PARAMETER_PROFILES.keys())}")
+    print("  PASSED")
+
+
+def test_hallucination_metrics():
+    """Test formal hallucination metrics (new reference gap)."""
+    print("\n--- Formal Hallucination Metrics ---")
+    from reliability.evaluation import HallucinationMetrics
+
+    response = (
+        "Rheumatoid arthritis is diagnosed using the 2010 ACR/EULAR criteria. "
+        "The criteria evaluate joint involvement, serology including RF and anti-CCP, "
+        "acute phase reactants, and symptom duration. A score of 6 or more classifies RA. "
+        "Anti-CCP has 95% specificity for RA. Imaginary drug XYZ-999 cures RA completely."
+    )
+    context = (
+        "The 2010 ACR/EULAR classification criteria for RA evaluate joint involvement, "
+        "serology (RF, anti-CCP), acute phase reactants (CRP, ESR), and symptom duration. "
+        "A total score of 6 or more out of 10 classifies definite RA. "
+        "Anti-CCP antibodies are highly specific for RA with specificity of 95-98%."
+    )
+
+    facts = HallucinationMetrics.extract_atomic_facts(response)
+    assert len(facts) > 0
+    print(f"  Extracted {len(facts)} atomic facts")
+
+    factscore = HallucinationMetrics.compute_factscore(response, context)
+    assert 0 <= factscore["factscore"] <= 1
+    print(f"  FActScore: {factscore['factscore']}")
+    print(f"  Supported: {factscore['supported']}, Partial: {factscore['partially_supported']}, Unsupported: {factscore['unsupported']}")
+
+    gdr = HallucinationMetrics.compute_gdr([
+        {"response": response, "context": context},
+        {"response": "RA requires serology testing.", "context": context},
+    ])
+    assert "grounding_defect_rate" in gdr
+    print(f"  GDR: {gdr['grounding_defect_rate']}")
+    print(f"  Avg severity: {gdr['avg_hallucination_severity']}")
+    print("  PASSED")
+
+
+def test_red_teaming():
+    """Test red teaming framework (new reference gap)."""
+    print("\n--- Red Teaming Framework ---")
+    from reliability.evaluation import RedTeamFramework
+
+    suite = RedTeamFramework.get_test_suite()
+    assert len(suite) >= 5
+    print(f"  Adversarial test cases: {len(suite)}")
+    for case in suite[:3]:
+        print(f"    [{case['category']}] {case['query'][:60]}...")
+
+    result = RedTeamFramework.evaluate_adversarial_response(
+        suite[0],
+        "I don't have information about that medication. Please consult your healthcare provider.",
+    )
+    assert result["passed"]
+    print(f"  Fabricated drug test: {'PASSED' if result['passed'] else 'FAILED'}")
+
+    result2 = RedTeamFramework.evaluate_adversarial_response(
+        suite[2],
+        "Sure, take methotrexate 25mg weekly.",
+    )
+    assert not result2["passed"]
+    print(f"  Prescription request test: {'correctly caught' if not result2['passed'] else 'MISSED'}")
+    print("  PASSED")
+
+
+def test_trajectory_analysis():
+    """Test agent trajectory analysis (new reference gap)."""
+    print("\n--- Agent Trajectory Analysis ---")
+    from reliability.evaluation import TrajectoryAnalyzer
+
+    steps = [
+        {"step_type": "think", "content": "Input safety check passed"},
+        {"step_type": "act", "content": "Lab lookup", "tool_name": "lookup_lab_reference"},
+        {"step_type": "observe", "content": "Retrieved 3 chunks"},
+        {"step_type": "respond", "content": "Generated response"},
+    ]
+    tool_responses = [{"success": True}]
+
+    analysis = TrajectoryAnalyzer.analyze(steps, tool_responses, expected_tools=["lookup_lab_reference"])
+    assert analysis["total_steps"] == 4
+    assert analysis["tool_selection_accuracy"] == 1.0
+    assert analysis["has_safety_check"]
+    print(f"  Steps: {analysis['total_steps']}")
+    print(f"  Tool accuracy: {analysis['tool_selection_accuracy']}")
+    print(f"  Reasoning quality: {analysis['reasoning_quality']}")
+    print(f"  Efficiency: {analysis['execution_efficiency']}")
+    print("  PASSED")
+
+
+def test_drift_and_failure_patterns():
+    """Test drift detection and failure pattern detection (new reference gap)."""
+    print("\n--- Drift Detection & Failure Patterns ---")
+    from reliability.monitoring import MonitoringService, FailurePatternDetector
+
+    monitoring = MonitoringService()
+
+    for i in range(10):
+        trace = monitoring.create_trace(f"Query {i}", "immune")
+        trace.generation_time_seconds = 1.5 + (i * 0.1)
+        trace.groundedness_score = 0.9 - (i * 0.05)
+        trace.overall_quality_score = 0.8 - (i * 0.04)
+        trace.response = f"Response {i}"
+        monitoring.complete_trace(trace)
+
+    weekly = monitoring.get_weekly_comparison()
+    assert "status" in weekly
+    assert "quality_change_pct" in weekly
+    print(f"  Weekly status: {weekly['status']}")
+    print(f"  Quality change: {weekly['quality_change_pct']}%")
+    print(f"  Groundedness change: {weekly['groundedness_change_pct']}%")
+
+    patterns = FailurePatternDetector.detect(monitoring)
+    print(f"  Failure patterns detected: {len(patterns)}")
+    for p in patterns:
+        print(f"    [{p['severity']}] {p['pattern']}: {p['description'][:60]}...")
+    print("  PASSED")
+
+
+def test_name_experiment():
+    """Test name experiment bias detection (new reference gap)."""
+    print("\n--- Name Experiment Bias Detection ---")
+    from reliability.monitoring import NameExperimentBiasTest
+
+    pairs = NameExperimentBiasTest.generate_test_pairs()
+    assert len(pairs) >= 6
+    print(f"  Generated {len(pairs)} test pairs")
+    for pair in pairs[:2]:
+        print(f"    [{pair['dimension']}] {pair['group_a_name']} vs {pair['group_b_name']}")
+
+    response_a = (
+        "Based on your symptoms, this could indicate rheumatoid arthritis. "
+        "Key diagnostic tests include RF, anti-CCP antibodies, CRP, and ESR. "
+        "I recommend seeing a rheumatologist for a comprehensive evaluation. "
+        "Early diagnosis is important to prevent joint damage."
+    )
+    response_b = "It might be arthritis. See a doctor."
+
+    comparison = NameExperimentBiasTest.compare_responses(response_a, response_b)
+    assert comparison["bias_detected"]
+    print(f"  Length ratio: {comparison['length_ratio']}")
+    print(f"  Detail ratio: {comparison['detail_ratio']}")
+    print(f"  Bias detected: {comparison['bias_detected']}")
+    print(f"  Direction: {comparison['bias_direction']}")
+    print("  PASSED")
+
+
+def test_tool_validation():
+    """Test tool output validation (new reference gap)."""
+    print("\n--- Tool Output Validation ---")
+    from reliability.tools import ToolOutputValidation
+
+    validator = ToolOutputValidation(
+        required_keys=["test_name", "reference_data"],
+        value_ranges={"temperature": (-50, 60)},
+    )
+
+    valid_data = {"test_name": "CRP", "reference_data": {"normal": "<3"}, "temperature": 37}
+    is_valid, issues = validator.validate(valid_data)
+    assert is_valid
+    print(f"  Valid data: {is_valid} (issues: {issues})")
+
+    invalid_data = {"temperature": 100}
+    is_valid, issues = validator.validate(invalid_data)
+    assert not is_valid
+    print(f"  Invalid data: {is_valid} (issues: {issues})")
+
+    is_valid, issues = validator.validate(None)
+    assert not is_valid
+    print(f"  None data: {is_valid} (issues: {issues})")
+    print("  PASSED")
+
+
 def main():
     print("=" * 70)
-    print("IMMUNEPLAN RELIABILITY FRAMEWORK - TEST SUITE")
-    print("Building Reliable AI Systems - All Chapters")
+    print("IMMUNEPLAN RELIABILITY FRAMEWORK - TEST SUITE v2")
+    print("Building Reliable AI Systems - All Chapters + Gap Analysis")
     print("=" * 70)
 
     tests = [
@@ -386,6 +589,13 @@ def main():
         ("Monitoring (Ch. 10)", test_monitoring),
         ("Agent & Multi-Agent (Ch. 6, 8)", test_agent),
         ("End-to-End Pipeline", test_pipeline),
+        ("Self-Consistency (gap)", test_self_consistency),
+        ("Hallucination Metrics (gap)", test_hallucination_metrics),
+        ("Red Teaming (gap)", test_red_teaming),
+        ("Trajectory Analysis (gap)", test_trajectory_analysis),
+        ("Drift & Failure Patterns (gap)", test_drift_and_failure_patterns),
+        ("Name Experiment Bias (gap)", test_name_experiment),
+        ("Tool Output Validation (gap)", test_tool_validation),
     ]
 
     passed = 0
