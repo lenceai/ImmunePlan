@@ -1,16 +1,38 @@
-# Autoimmune Disease Diagnosis LLM Fine-Tuning
+# ImmunePlan — Reliable Medical AI System
 
-Complete pipeline for fine-tuning nvidia/Nemotron-Cascade-8B-Thinking on autoimmune disease research papers and evaluating performance on clinical benchmark questions.
+Complete pipeline for building a **reliable** autoimmune disease AI assistant, implementing all concepts from *"Building Reliable AI Systems"*. Includes fine-tuning nvidia/Nemotron-Cascade-8B-Thinking on autoimmune disease research papers, with a full reliability framework covering outputs, agents, and operations.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the complete concept-to-code mapping.
 
 ## Features
 
-- ✅ Automated model download and testing
-- ✅ Benchmark question set for 10 autoimmune conditions
-- ✅ Automated research paper collection (PubMed + arXiv)
-- ✅ QLoRA fine-tuning (memory-efficient)
-- ✅ Optional full fine-tuning
-- ✅ Comprehensive evaluation metrics
-- ✅ Automated comparison and reporting
+### Fine-Tuning Pipeline
+- Automated model download and testing
+- Benchmark question set for 10 autoimmune conditions
+- Automated research paper collection (PubMed + arXiv)
+- QLoRA / DoRA / High-Rank LoRA fine-tuning
+- Comprehensive evaluation and comparison
+
+### Reliability Framework (Building Reliable AI Systems)
+
+**Layer 1 — Reliable Outputs (Ch. 2-5)**
+- Structured prompt templates with 7 reliability components
+- RAG pipeline with hybrid retrieval (dense + keyword)
+- Vector store with metadata filtering and quality scoring
+- Fine-tuning with proper training data (including refusal cases)
+
+**Layer 2 — Reliable Agents (Ch. 6-8)**
+- Medical agent with ReAct-style reasoning loop
+- MCP-style tool interfaces with structured responses
+- Medical tools: lab lookup, drug info, disease activity, clinical guidelines
+- Multi-agent orchestrator with intent routing and shared state
+- Conversation memory management
+
+**Layer 3 — Reliable Operations (Ch. 9-11)**
+- Evaluation: groundedness checking, quality scoring, performance tracking
+- Monitoring: request tracing, dashboards, alerts, cost tracking
+- Safety: PII detection/redaction (HIPAA-aware), content filtering, bias detection
+- Medical disclaimer enforcement, crisis resource handling
 
 ## Quick Start
 
@@ -66,7 +88,33 @@ chmod +x run_all.sh
 - RAM: 64GB
 - Storage: 100GB free
 
-## Pipeline Steps
+## Reliability Framework Quick Start
+
+The reliability framework works independently of GPU/training:
+
+```bash
+# Test the entire reliability framework (no GPU needed)
+python3 scripts/test_reliability.py
+
+# Build vector store from training data (after running script 3)
+python3 scripts/build_vector_store.py
+
+# Start the API with reliability pipeline
+python3 api.py
+```
+
+### API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/chat` | Full reliability pipeline chat |
+| `GET /api/tools` | List available medical tools |
+| `POST /api/tools/<name>` | Execute a medical tool directly |
+| `GET /api/dashboard` | Monitoring dashboard + recommendations |
+| `POST /api/feedback` | Submit user feedback |
+| `GET /api/reliability` | System reliability specification |
+
+## Fine-Tuning Pipeline Steps
 
 1. **Download & Test** (~15 min) - Download model, run inference test
 2. **Benchmark Testing** (~20 min) - Test on 10 autoimmune questions
