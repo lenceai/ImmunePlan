@@ -1,6 +1,6 @@
 Flask==3.0.0
 flask-cors==4.0.0
 requests==2.31.0
-paramiko==4.0.0
-scp==0.15.0
-
+numpy>=1.26.0
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.0
