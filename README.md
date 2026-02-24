@@ -1,208 +1,101 @@
 # ImmunePlan — Reliable Medical AI System
 
-Complete pipeline for building a **reliable** autoimmune disease AI assistant, implementing all concepts from *"Building Reliable AI Systems"*. Includes fine-tuning nvidia/Nemotron-Cascade-8B-Thinking on autoimmune disease research papers, with a full reliability framework covering outputs, agents, and operations.
+10-step pipeline for building a **reliable** autoimmune disease AI assistant, implementing all concepts from *Building Reliable AI Systems* (Manning, 2026).
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the complete concept-to-code mapping.
 
-## Features
+## Pipeline
 
-### Fine-Tuning Pipeline
-- Automated model download and testing
-- Benchmark question set for 10 autoimmune conditions
-- Automated research paper collection (PubMed + arXiv)
-- QLoRA / DoRA / High-Rank LoRA fine-tuning
-- Comprehensive evaluation and comparison
-
-### Reliability Framework (Building Reliable AI Systems)
-
-**Layer 1 — Reliable Outputs (Ch. 2-5)**
-- Structured prompt templates with 7 reliability components
-- RAG pipeline with hybrid retrieval (dense + keyword)
-- Vector store with metadata filtering and quality scoring
-- Fine-tuning with proper training data (including refusal cases)
-
-**Layer 2 — Reliable Agents (Ch. 6-8)**
-- Medical agent with ReAct-style reasoning loop
-- MCP-style tool interfaces with structured responses
-- Medical tools: lab lookup, drug info, disease activity, clinical guidelines
-- Multi-agent orchestrator with intent routing and shared state
-- Conversation memory management
-
-**Layer 3 — Reliable Operations (Ch. 9-11)**
-- Evaluation: groundedness checking, quality scoring, performance tracking
-- Monitoring: request tracing, dashboards, alerts, cost tracking
-- Safety: PII detection/redaction (HIPAA-aware), content filtering, bias detection
-- Medical disclaimer enforcement, crisis resource handling
+| Step | Script | Book Chapter | What It Does |
+|------|--------|-------------|--------------|
+| 01 | `pipeline/01_setup.py` | Ch 1 | Config, download model, detect GPU, select training tier |
+| 02 | `pipeline/02_baseline.py` | Ch 2 | Prompt engineering baseline — test model before any changes |
+| 03 | `pipeline/03_collect_data.py` | Ch 3-4 | Download papers from arXiv/PubMed, extract, chunk |
+| 04 | `pipeline/04_build_rag.py` | Ch 3-4 | Build vector store, embeddings, test hybrid retrieval |
+| 05 | `pipeline/05_finetune.py` | Ch 5 | **Adaptive** fine-tuning — auto-selects tier by GPU memory |
+| 06 | `pipeline/06_test_model.py` | Ch 5 | Test fine-tuned model, compare against baseline |
+| 07 | `pipeline/07_build_agent.py` | Ch 6-7 | Build agent with tools, memory, MCP interfaces |
+| 08 | `pipeline/08_evaluate.py` | Ch 9 | FActScore, GDR, quality metrics, red teaming |
+| 09 | `pipeline/09_safety.py` | Ch 11 | PII detection, bias testing, name experiment |
+| 10 | `pipeline/10_deploy.py` | Ch 10 | Deploy API with monitoring, dashboards, alerts |
 
 ## Quick Start
 
-### Prerequisites
-
-- NVIDIA GPU with CUDA 12.8 support (for training)
-- Python 3.10+ (recommended: 3.11+)
-
-### 1. Setup
-
 ```bash
-chmod +x setup.sh
-./setup.sh
-# (Optional, recommended) use venv:
-# USE_VENV=1 ./setup.sh
-# source .venv/bin/activate
-```
+# Run any step standalone
+python3 pipeline/01_setup.py --skip-download
+python3 pipeline/07_build_agent.py
+python3 pipeline/09_safety.py
 
-The setup script will:
-- Install dependencies into your current Python environment by default (Conda `(base)` is fine)
-- Optionally create a Python virtual environment at `.venv` (set `USE_VENV=1`)
-- Install PyTorch 2.7.1 with CUDA 12.8 support via pip
-- Install all required dependencies via pip
-- Create necessary directories
+# Run entire pipeline
+bash pipeline/run_all.sh
 
-### 2. Configure
+# Skip GPU-dependent steps
+SKIP="02,05,06" bash pipeline/run_all.sh
 
-Edit `.env` and add your email for PubMed API:
-```bash
-PUBMED_EMAIL=your.email@example.com
-```
-
-### 3. Run Pipeline
-
-```bash
-chmod +x run_all.sh
-./run_all.sh
-```
-
-**Note:** The scripts run in your current environment by default. If you want to force using `.venv`, run with `USE_VENV=1` (and make sure `.venv` exists).
-
-## Hardware Requirements
-
-### Minimum (QLoRA only)
-
-- GPU: NVIDIA RTX 3090 (24GB VRAM)
-- RAM: 32GB
-- Storage: 50GB free
-
-### Recommended (Full fine-tuning)
-
-- GPU: 3x NVIDIA RTX 3090 (72GB total VRAM)
-- RAM: 64GB
-- Storage: 100GB free
-
-## Reliability Framework Quick Start
-
-The reliability framework works independently of GPU/training:
-
-```bash
-# Test the entire reliability framework (no GPU needed)
-python3 scripts/test_reliability.py
-
-# Build vector store from training data (after running script 3)
-python3 scripts/build_vector_store.py
-
-# Start the API with reliability pipeline
+# Start the API
 python3 api.py
 ```
 
-### API Endpoints
+## Adaptive Fine-Tuning (Step 05)
 
-| Endpoint | Description |
-|----------|-------------|
-| `POST /api/chat` | Full reliability pipeline chat |
-| `GET /api/tools` | List available medical tools |
-| `POST /api/tools/<name>` | Execute a medical tool directly |
-| `GET /api/dashboard` | Monitoring dashboard + recommendations |
-| `POST /api/feedback` | Submit user feedback |
-| `GET /api/reliability` | System reliability specification |
+The fine-tuning step automatically selects the optimal training strategy based on available GPU memory:
 
-## Fine-Tuning Pipeline Steps
+| VRAM | Tier | Method | Rank | Targets | Depth |
+|------|------|--------|------|---------|-------|
+| < 16 GB | minimal | QLoRA | 8 | Attention only | Lightweight |
+| 16-23 GB | standard | QLoRA | 16 | Attention only | Standard |
+| 24-39 GB | enhanced | DoRA | 32 | Attention + MLP | Deep |
+| 40+ GB | maximum | High-Rank LoRA | 256 | All layers | Maximum |
 
-1. **Download & Test** (~15 min) - Download model, run inference test
-2. **Benchmark Testing** (~20 min) - Test on 10 autoimmune questions
-3. **Download Papers** (~10 min) - Fetch 100+ research papers
-4. **QLoRA Fine-tuning** (~1-2 hours) - Memory-efficient training
-5. **Test QLoRA** (~20 min) - Evaluate QLoRA model
-6. **Full Fine-tuning** (~4-8 hours, optional) - Train all parameters
-7. **Test Full Model** (~20 min) - Evaluate full model
-8. **Score & Compare** (~5 min) - Generate comparison report
+## Project Structure
 
-## Expected Results
+```
+pipeline/
+├── config.py           # Single source of truth (config, utils, questions)
+├── 01_setup.py         # Ch 1: Setup
+├── 02_baseline.py      # Ch 2: Baseline
+├── 03_collect_data.py  # Ch 3-4: Data collection
+├── 04_build_rag.py     # Ch 3-4: RAG pipeline
+├── 05_finetune.py      # Ch 5: Adaptive fine-tuning
+├── 06_test_model.py    # Ch 5: Test fine-tuned
+├── 07_build_agent.py   # Ch 6-7: Agent + tools
+├── 08_evaluate.py      # Ch 9: Evaluation
+├── 09_safety.py        # Ch 11: Safety
+├── 10_deploy.py        # Ch 10: Deploy
+├── run_all.sh          # Run all steps
+├── run_pipeline.py     # ZenML pipeline runner
+└── lib/                # Shared library
+    ├── prompts.py      # Structured prompt templates
+    ├── rag.py          # Vector store, hybrid retrieval
+    ├── tools.py        # Medical tools, MCP interfaces
+    ├── agent.py        # Agent framework, multi-agent
+    ├── evaluation.py   # Hallucination metrics, quality
+    ├── safety.py       # PII, bias, content safety
+    └── monitoring.py   # Tracing, dashboards, alerts
 
-### Output Files
-
-- `baseline_results.json` - Pre-training performance
-- `qlora_results.json` - QLoRA performance
-- `full_model_results.json` - Full fine-tuning performance
-- `model_comparison.csv` - Metric comparison table
-- `final_report.txt` - Executive summary
-
-### Performance Metrics
-
-- Response time (seconds)
-- Word count
-- Reasoning quality (presence of <think> tags)
-- Medical terminology usage
-- Structured output format
-- Confidence reporting
-- Next steps suggestions
-
-## Customization
-
-### Add Custom Questions
-
-Edit `scripts/2_autoimmune_questions.py` and modify `AUTOIMMUNE_QUESTIONS` list.
-
-### Adjust Training Parameters
-
-Edit `.env` file to modify:
-
-- Learning rates
-- Batch sizes
-- Number of epochs
-- LoRA configuration
-
-### Change Base Model
-
-Modify `MODEL_NAME` in `.env` to use different model.
-
-## Troubleshooting
-
-### Out of Memory Errors
-
-- Reduce `QLORA_BATCH_SIZE` in `.env` (try `1`)
-- Increase `QLORA_GRAD_ACCUM` in `.env` to keep effective batch size similar (e.g. `16`)
-- Reduce `MAX_SEQ_LENGTH` in `.env` (try `1024` if still OOM)
-- Use 4-bit quantization for inference
-
-### Slow Training
-
-- Enable gradient checkpointing
-- Use mixed precision (bf16)
-- Reduce sequence length
-
-### Poor Results
-
-- Increase training epochs
-- Add more training data
-- Adjust learning rate
-- Try full fine-tuning instead of QLoRA
-
-## Citation
-
-```bibtex
-@software{autoimmune_llm_2025,
-  title = {Autoimmune Disease Diagnosis LLM Fine-Tuning Pipeline},
-  year = {2025},
-  author = {Your Name},
-  url = {https://github.com/yourusername/autoimmune-llm}
-}
+api.py                  # REST API with full reliability pipeline
 ```
 
-## License
+## API Endpoints
 
-MIT License - See LICENSE file for details
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/chat` | POST | Chat with full reliability pipeline |
+| `/api/doctors` | GET | List available specialist doctors |
+| `/api/tools` | GET | List registered medical tools |
+| `/api/tools/<name>` | POST | Execute a medical tool directly |
+| `/api/dashboard` | GET | Monitoring dashboard |
+| `/api/feedback` | POST | Submit user feedback |
+| `/api/reliability` | GET | System reliability specification |
 
-## Acknowledgments
+## Hardware Requirements
 
-- DeepSeek-AI for DeepSeek-R1 model
-- Hugging Face for Transformers library
-- Meta for Llama and PEFT libraries
+### Minimum (RAG + Agent only, no fine-tuning)
+- CPU only
+- 8 GB RAM
+
+### Recommended (Full pipeline with fine-tuning)
+- NVIDIA GPU with 24+ GB VRAM
+- 32 GB RAM
+- 50 GB storage
