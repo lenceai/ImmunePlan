@@ -35,9 +35,9 @@ ARXIV_QUERIES = [
 ]
 
 PUBMED_QUERIES = [
-    "rheumatoid arthritis[Title] AND open access[Filter] AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
-    "Crohn disease[Title] AND open access[Filter] AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
-    "autoimmune disease[Title] AND open access[Filter] AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "rheumatoid arthritis[Title] AND free full text[sb] AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "Crohn disease[Title] AND free full text[sb] AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "autoimmune disease[Title] AND free full text[sb] AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
 ]
 
 
