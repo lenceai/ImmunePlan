@@ -145,7 +145,7 @@ class PromptTemplate:
             sections.append(f"## Examples{example_text}")
 
         if True:
-            sections.append(f"## Medical Disclaimer\n{RELIABILITY_SPEC["medical_disclaimer"]}")
+            sections.append(f"## Medical Disclaimer\n{RELIABILITY_SPEC['medical_disclaimer']}")
 
         sections.append(f"## User Question\n{user_query}")
 

@@ -64,54 +64,142 @@ class EvaluationResult:
     details: Dict[str, Any] = field(default_factory=dict)
 
 
-class GroundednessChecker:
+class NLIGroundednessChecker:
     """
-    Check if responses are grounded in provided context.
-
-    Detects hallucinations by verifying claims against retrieved sources.
+    NLI-based groundedness: uses cross-encoder/nli-deberta-v3-base to check
+    entailment between each sentence in the response and the context.
+    Falls back to word-overlap if cross-encoder unavailable.
     """
 
-    CLAIM_PATTERNS = [
-        r"studies?\s+(?:show|demonstrate|indicate|suggest|reveal)",
-        r"according\s+to",
-        r"research\s+(?:shows|demonstrates|indicates|suggests)",
-        r"\d+%\s+of\s+patients",
-        r"(?:first|second|third)-line\s+(?:treatment|therapy)",
-        r"(?:recommended|approved)\s+(?:dose|dosage)\s+(?:is|of)\s+\d+",
-        r"clinical\s+trial[s]?\s+(?:show|demonstrate)",
-    ]
+    _NLI_MODEL = "cross-encoder/nli-deberta-v3-base"
+    _LABEL_ENTAILMENT = 2   # deberta-v3-base NLI: 0=contradiction, 1=neutral, 2=entailment
+
+    def __init__(self):
+        self._model = None
+
+    def _get_model(self):
+        if self._model is None:
+            try:
+                from sentence_transformers import CrossEncoder
+                self._model = CrossEncoder(self._NLI_MODEL)
+            except Exception as e:
+                logger.warning(f"NLI model unavailable ({e}), using word-overlap fallback")
+                self._model = "unavailable"
+        return self._model if self._model != "unavailable" else None
 
     def check(self, response: str, context: str) -> Tuple[float, List[str]]:
-        """Check groundedness of response against context."""
+        """Return (groundedness_score 0-1, list of ungrounded sentence previews)."""
         if not context:
-            return 0.5, ["No context provided for grounding check"]
+            return 0.5, ["No context provided"]
 
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', response) if len(s.strip()) > 20]
+        if not sentences:
+            return 1.0, []
+
+        model = self._get_model()
+        if model is not None:
+            return self._nli_check(sentences, context, model)
+        return self._overlap_check(sentences, context)
+
+    def _nli_check(self, sentences: List[str], context: str, model) -> Tuple[float, List[str]]:
+        # Truncate context to avoid very long inputs
+        ctx = context[:2000]
+        pairs = [(ctx, s) for s in sentences]
+        try:
+            scores = model.predict(pairs, apply_softmax=True)
+            entailment_scores = [s[self._LABEL_ENTAILMENT] for s in scores]
+            issues = [
+                f"Low entailment ({e:.2f}): {s[:80]}..."
+                for s, e in zip(sentences, entailment_scores) if e < 0.4
+            ]
+            return float(sum(entailment_scores) / len(entailment_scores)), issues
+        except Exception as e:
+            logger.warning(f"NLI inference failed: {e}")
+            return self._overlap_check(sentences, context)
+
+    def _overlap_check(self, sentences: List[str], context: str) -> Tuple[float, List[str]]:
+        context_lower = context.lower()
         issues = []
-        claims_found = 0
-        claims_grounded = 0
+        grounded = 0
+        for s in sentences:
+            terms = set(re.findall(r'\b\w{4,}\b', s.lower()))
+            coverage = sum(1 for t in terms if t in context_lower) / max(len(terms), 1)
+            if coverage >= 0.3:
+                grounded += 1
+            else:
+                issues.append(f"Low coverage ({coverage:.2f}): {s[:80]}...")
+        return grounded / max(len(sentences), 1), issues
 
-        for pattern in self.CLAIM_PATTERNS:
-            matches = re.finditer(pattern, response.lower())
-            for match in matches:
-                claims_found += 1
-                start = max(0, match.start() - 50)
-                end = min(len(response), match.end() + 100)
-                claim_text = response[start:end].lower()
 
-                key_terms = set(re.findall(r'\b\w{4,}\b', claim_text))
-                context_lower = context.lower()
-                grounded_terms = sum(1 for t in key_terms if t in context_lower)
+class GroundednessChecker(NLIGroundednessChecker):
+    """Alias kept for backward compatibility — now uses NLI by default."""
+    pass
 
-                if grounded_terms / max(len(key_terms), 1) >= 0.3:
-                    claims_grounded += 1
-                else:
-                    issues.append(f"Potentially ungrounded claim near: ...{claim_text[:80]}...")
 
-        if claims_found == 0:
-            return 0.8, []
+class MedQAEvaluator:
+    """
+    Evaluate model accuracy on MedQA-USMLE filtered for immunology/rheumatology.
+    Pulls the dataset from HuggingFace (GBaker/MedQA-USMLE-4-options).
+    """
 
-        score = claims_grounded / claims_found
-        return score, issues
+    IMMUNOLOGY_KEYWORDS = [
+        "rheumatoid", "arthritis", "lupus", "crohn", "autoimmune",
+        "inflammatory bowel", "sjogren", "vasculitis", "immunosuppressive",
+        "methotrexate", "adalimumab", "infliximab", "dmard", "biologic",
+        "anti-ccp", "ana", "complement", "cytokine", "tnf",
+    ]
+
+    @classmethod
+    def filter_immunology(cls, dataset) -> list:
+        """Keep only questions mentioning immunology/rheumatology terms."""
+        filtered = []
+        for item in dataset:
+            q = (item.get("question", "") + " " + str(item.get("options", ""))).lower()
+            if any(kw in q for kw in cls.IMMUNOLOGY_KEYWORDS):
+                filtered.append(item)
+        return filtered
+
+    @classmethod
+    def load_subset(cls, split: str = "test", max_samples: int = 200) -> Optional[List[Dict]]:
+        try:
+            from datasets import load_dataset
+            ds = load_dataset("GBaker/MedQA-USMLE-4-options", split=split, trust_remote_code=True)
+            subset = cls.filter_immunology(ds)[:max_samples]
+            logger.info(f"MedQA immunology subset: {len(subset)} questions")
+            return subset
+        except Exception as e:
+            logger.warning(f"MedQA dataset unavailable: {e}")
+            return None
+
+    @classmethod
+    def evaluate_response(cls, item: Dict, response: str) -> Dict:
+        """Check if model's response contains the correct answer letter/text."""
+        correct_idx = item.get("answer_idx", item.get("answer", ""))
+        options = item.get("options", {})
+        correct_text = options.get(str(correct_idx), "").lower() if isinstance(options, dict) else ""
+        response_lower = response.lower()
+
+        answered_correctly = (
+            str(correct_idx).lower() in response_lower[:50]  # answer letter in first 50 chars
+            or (correct_text and correct_text[:20] in response_lower)
+        )
+        return {
+            "question": item.get("question", "")[:100],
+            "correct_answer": f"{correct_idx}: {correct_text}",
+            "correct": answered_correctly,
+            "response_preview": response[:150],
+        }
+
+    @classmethod
+    def compute_accuracy(cls, results: List[Dict]) -> Dict:
+        if not results:
+            return {"accuracy": 0.0, "total": 0}
+        correct = sum(1 for r in results if r["correct"])
+        return {
+            "accuracy": round(correct / len(results), 3),
+            "correct": correct,
+            "total": len(results),
+        }
 
 
 class ResponseQualityChecker:
@@ -304,6 +392,242 @@ try:
     import numpy as np
 except ImportError:
     np = None
+
+
+# =============================================================================
+# RAGAS-STYLE EVALUATION  (faithfulness · answer_relevancy · context_precision
+#                           context_recall · answer_correctness)
+# =============================================================================
+
+class RAGASEvaluator:
+    """
+    RAGAS-inspired evaluation for RAG pipeline quality.
+
+    Each metric is 0.0–1.0; higher is better.
+
+    faithfulness      — Are the model's claims supported by the retrieved context?
+                        Uses NLI entailment (cross-encoder/nli-deberta-v3-base);
+                        falls back to term-overlap.
+    answer_relevancy  — Does the response actually address the question?
+                        Uses cosine similarity of BGE embeddings; falls back to
+                        keyword overlap.
+    context_precision — What fraction of retrieved chunks are relevant to the
+                        question?  Uses embedding similarity.
+    context_recall    — Are all key response claims attributable to the retrieved
+                        context?  Approximates "was the context sufficient?".
+    answer_correctness— Semantic F1 against a gold-standard reference answer.
+                        Combines embedding cosine similarity + token F1.
+
+    Usage:
+        evaluator = RAGASEvaluator()
+        scores = evaluator.evaluate_all(
+            question="...", response="...",
+            context_chunks=["chunk text 1", "chunk text 2", ...],
+            reference="gold answer",   # optional
+        )
+    """
+
+    # Entailment label index for cross-encoder/nli-deberta-v3-base
+    _NLI_ENTAILMENT_IDX = 2
+
+    def __init__(self):
+        self._encoder = None
+        self._nli_model = None
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def faithfulness(self, response: str, context: str) -> float:
+        """Fraction of response claims that are entailed by the context."""
+        claims = self._extract_claims(response)
+        if not claims:
+            return 1.0   # nothing to verify
+        if not context:
+            return 0.0
+
+        scores = []
+        for claim in claims:
+            scores.append(self._entailment_score(claim, context))
+        return float(sum(scores) / len(scores))
+
+    def answer_relevancy(self, question: str, response: str) -> float:
+        """Cosine similarity between question and response embeddings."""
+        if not response.strip():
+            return 0.0
+        encoder = self._get_encoder()
+        if encoder is not None:
+            try:
+                embs = encoder.encode(
+                    [question, response[:512]], normalize_embeddings=True
+                )
+                return float(np.dot(embs[0], embs[1]))
+            except Exception:
+                pass
+        # Fallback: keyword overlap
+        q_terms = set(re.findall(r'\b\w{4,}\b', question.lower()))
+        r_terms = set(re.findall(r'\b\w{4,}\b', response.lower()))
+        return len(q_terms & r_terms) / max(len(q_terms), 1)
+
+    def context_precision(self, question: str, chunks: List[str]) -> float:
+        """Fraction of retrieved chunks that are relevant to the question."""
+        if not chunks:
+            return 0.0
+        encoder = self._get_encoder()
+        if encoder is not None:
+            try:
+                q_emb = encoder.encode([question], normalize_embeddings=True)
+                c_embs = encoder.encode(
+                    [c[:512] for c in chunks[:15]], normalize_embeddings=True
+                )
+                sims = np.dot(c_embs, q_emb.T).flatten()
+                relevant = int(np.sum(sims >= 0.50))
+                return relevant / len(chunks)
+            except Exception:
+                pass
+        # Fallback: keyword overlap
+        q_terms = set(re.findall(r'\b\w{4,}\b', question.lower()))
+        relevant = sum(
+            1 for c in chunks
+            if len(q_terms & set(re.findall(r'\b\w{4,}\b', c.lower()))) / max(len(q_terms), 1) >= 0.25
+        )
+        return relevant / len(chunks)
+
+    def context_recall(self, response: str, chunks: List[str]) -> float:
+        """Fraction of response claims attributable to at least one chunk."""
+        claims = self._extract_claims(response)
+        if not claims:
+            return 1.0
+        if not chunks:
+            return 0.0
+        ctx_combined = " ".join(chunks)
+        supported = 0
+        for claim in claims:
+            score = self._entailment_score(claim, ctx_combined)
+            if score >= 0.40:
+                supported += 1
+        return supported / len(claims)
+
+    def answer_correctness(self, response: str, reference: str) -> float:
+        """Semantic F1 between response and gold-standard reference."""
+        if not reference or not response:
+            return 0.0
+        # Embedding cosine similarity
+        emb_score = 0.5
+        encoder = self._get_encoder()
+        if encoder is not None:
+            try:
+                embs = encoder.encode(
+                    [response[:512], reference[:512]], normalize_embeddings=True
+                )
+                emb_score = float(np.dot(embs[0], embs[1]))
+                emb_score = max(0.0, min(1.0, emb_score))
+            except Exception:
+                pass
+        # Token F1 (on 4+ char words to skip stop words)
+        r_terms = set(re.findall(r'\b\w{4,}\b', response.lower()))
+        ref_terms = set(re.findall(r'\b\w{4,}\b', reference.lower()))
+        if not ref_terms:
+            return emb_score
+        precision = len(r_terms & ref_terms) / max(len(r_terms), 1)
+        recall = len(r_terms & ref_terms) / max(len(ref_terms), 1)
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+        return 0.5 * emb_score + 0.5 * f1
+
+    def evaluate_all(
+        self,
+        question: str,
+        response: str,
+        context_chunks: List[str],
+        reference: Optional[str] = None,
+    ) -> Dict[str, float]:
+        """
+        Run all RAGAS metrics and return a dict with a composite ragas_score.
+
+        context_chunks: list of retrieved text strings (from RetrievedChunk.text)
+        reference:      gold-standard answer string (optional — skips answer_correctness)
+        """
+        ctx_combined = "\n\n".join(context_chunks)
+        scores: Dict[str, float] = {}
+
+        scores["faithfulness"]      = round(self.faithfulness(response, ctx_combined), 3)
+        scores["answer_relevancy"]  = round(self.answer_relevancy(question, response), 3)
+        scores["context_precision"] = round(self.context_precision(question, context_chunks), 3)
+        scores["context_recall"]    = round(self.context_recall(response, context_chunks), 3)
+        if reference:
+            scores["answer_correctness"] = round(self.answer_correctness(response, reference), 3)
+
+        # Weighted composite — faithfulness matters most for clinical safety
+        weights = {
+            "faithfulness": 0.30,
+            "answer_relevancy": 0.25,
+            "context_precision": 0.20,
+            "context_recall": 0.15,
+            "answer_correctness": 0.10,
+        }
+        total_weight = sum(weights[k] for k in scores)
+        if total_weight > 0:
+            scores["ragas_score"] = round(
+                sum(scores[k] * weights[k] for k in scores if k != "ragas_score") / total_weight,
+                3,
+            )
+        else:
+            scores["ragas_score"] = 0.0
+        return scores
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _extract_claims(self, text: str) -> List[str]:
+        """Split text into atomic claims (non-trivial sentences)."""
+        raw = re.split(r'(?<=[.!?])\s+', text)
+        skip = ("disclaimer", "note:", "important:", "consult your",
+                "not a substitute", "healthcare provider", "always consult")
+        claims = []
+        for s in raw:
+            s = s.strip()
+            if len(s) < 30 or len(s) > 600:
+                continue
+            if any(s.lower().startswith(p) or p in s.lower()[:60] for p in skip):
+                continue
+            claims.append(re.sub(r'\*\*[^*]+\*\*:?\s*', '', s).strip())
+        return claims[:20]
+
+    def _get_encoder(self):
+        if self._encoder is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+                self._encoder = SentenceTransformer(
+                    "BAAI/bge-base-en-v1.5", device="cpu"
+                )
+            except Exception:
+                self._encoder = "unavailable"
+        return self._encoder if self._encoder != "unavailable" else None
+
+    def _get_nli(self):
+        if self._nli_model is None:
+            try:
+                from sentence_transformers import CrossEncoder
+                self._nli_model = CrossEncoder("cross-encoder/nli-deberta-v3-base")
+            except Exception:
+                self._nli_model = "unavailable"
+        return self._nli_model if self._nli_model != "unavailable" else None
+
+    def _entailment_score(self, claim: str, context: str) -> float:
+        """Return probability that context entails the claim."""
+        nli = self._get_nli()
+        if nli is not None:
+            try:
+                scores = nli.predict([(context[:1500], claim)], apply_softmax=True)
+                return float(scores[0][self._NLI_ENTAILMENT_IDX])
+            except Exception:
+                pass
+        # Fallback: term coverage
+        c_terms = set(re.findall(r'\b\w{4,}\b', claim.lower()))
+        ctx_text = context.lower()
+        covered = sum(1 for t in c_terms if t in ctx_text)
+        return covered / max(len(c_terms), 1)
 
 
 # =============================================================================

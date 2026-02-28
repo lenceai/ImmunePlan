@@ -46,55 +46,97 @@ class AgentIntent(Enum):
 @dataclass
 class ConversationMemory:
     """
-    Session memory for maintaining conversation context.
-
-    Manages:
-    - Short-term context (current session)
-    - Key facts extracted from conversation
-    - Tool results history
+    Hierarchical session memory with three layers:
+      1. recent_messages  — last 5 full turns (verbatim)
+      2. summary          — compressed older context (LLM-generated or extractive)
+      3. extracted_facts  — persistent structured facts (conditions, meds, labs)
     """
-    messages: List[Dict[str, str]] = field(default_factory=list)
+    recent_messages: List[Dict[str, str]] = field(default_factory=list)
+    summary: str = ""                          # compressed older history
     extracted_facts: Dict[str, str] = field(default_factory=dict)
     tool_results: List[Dict] = field(default_factory=list)
     session_id: str = ""
-    max_history: int = 10
+    _full_history: List[Dict[str, str]] = field(default_factory=list)  # archive
+    max_recent: int = 5
+
+    # compat alias
+    @property
+    def messages(self):
+        return self.recent_messages
 
     def add_message(self, role: str, content: str):
-        self.messages.append({
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now().isoformat(),
-        })
-        if len(self.messages) > self.max_history * 2:
-            self.messages = self.messages[-self.max_history:]
+        entry = {"role": role, "content": content, "timestamp": datetime.now().isoformat()}
+        self._full_history.append(entry)
+        self.recent_messages.append(entry)
+        # Roll oldest recent into summary when buffer fills
+        if len(self.recent_messages) > self.max_recent * 2:
+            evicted = self.recent_messages[:-self.max_recent]
+            self.recent_messages = self.recent_messages[-self.max_recent:]
+            self._compress_into_summary(evicted)
+        # Auto-extract facts from user messages
+        if role == "user":
+            self._extract_facts(content)
+
+    def _compress_into_summary(self, evicted: List[Dict]):
+        """Extractive compression: keep first sentence of each evicted turn."""
+        lines = []
+        for m in evicted:
+            text = m["content"]
+            first_sentence = text.split(".")[0][:150]
+            lines.append(f"{m['role']}: {first_sentence}")
+        new_chunk = " | ".join(lines)
+        if self.summary:
+            # Keep summary bounded at 1000 chars
+            combined = self.summary + " … " + new_chunk
+            self.summary = combined[-1000:]
+        else:
+            self.summary = new_chunk
+
+    def _extract_facts(self, text: str):
+        """Simple regex-based fact extraction from user messages."""
+        import re
+        # Conditions
+        conditions = ["rheumatoid arthritis", "crohn", "lupus", "sjogren", "vasculitis",
+                      "ankylosing spondylitis", "psoriatic arthritis", "IBD", "UC"]
+        for c in conditions:
+            if c.lower() in text.lower():
+                self.extracted_facts["condition"] = c
+        # Medications mentioned
+        from pipeline.lib.tools import DRUG_INTERACTIONS
+        for drug in DRUG_INTERACTIONS:
+            if drug.lower() in text.lower():
+                meds = self.extracted_facts.get("medications", "")
+                if drug not in meds:
+                    self.extracted_facts["medications"] = (meds + ", " + drug).strip(", ")
+        # Lab values: "CRP 45" or "DAS28 = 5.8"
+        lab_match = re.search(r'\b(CRP|ESR|RF|anti-CCP|DAS28|CDAI|calprotectin)\s*[=:is]?\s*(\d+(?:\.\d+)?)', text, re.IGNORECASE)
+        if lab_match:
+            self.extracted_facts[f"lab_{lab_match.group(1).lower()}"] = lab_match.group(2)
 
     def add_tool_result(self, tool_name: str, result: Dict):
-        self.tool_results.append({
-            "tool": tool_name,
-            "result": result,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self.tool_results.append({"tool": tool_name, "result": result,
+                                  "timestamp": datetime.now().isoformat()})
 
     def extract_fact(self, key: str, value: str):
         self.extracted_facts[key] = value
 
     def get_context_summary(self) -> str:
         parts = []
-        if self.messages:
-            recent = self.messages[-4:]
-            for msg in recent:
-                parts.append(f"{msg['role']}: {msg['content'][:200]}")
-
         if self.extracted_facts:
-            facts = ", ".join(f"{k}: {v}" for k, v in self.extracted_facts.items())
-            parts.append(f"Known facts: {facts}")
-
+            facts = "; ".join(f"{k}={v}" for k, v in self.extracted_facts.items())
+            parts.append(f"[Patient context: {facts}]")
+        if self.summary:
+            parts.append(f"[Earlier conversation: {self.summary}]")
+        for msg in self.recent_messages[-4:]:
+            parts.append(f"{msg['role']}: {msg['content'][:300]}")
         return "\n".join(parts) if parts else ""
 
     def clear(self):
-        self.messages.clear()
+        self.recent_messages.clear()
+        self._full_history.clear()
         self.extracted_facts.clear()
         self.tool_results.clear()
+        self.summary = ""
 
 
 @dataclass
@@ -128,6 +170,7 @@ class IntentRouter:
 
     INTENT_KEYWORDS = {
         AgentIntent.CRISIS: ["suicide", "self-harm", "kill myself", "end my life", "overdose"],
+        AgentIntent.GENERAL: [],  # catch-all for ambiguous queries handled below
         AgentIntent.LAB_INTERPRETATION: ["lab", "test result", "blood work", "CRP", "ESR",
                                           "anti-CCP", "ANA", "RF value", "calprotectin"],
         AgentIntent.DRUG_INFO: ["drug", "medication", "methotrexate", "adalimumab",
@@ -143,7 +186,13 @@ class IntentRouter:
     def classify(self, query: str) -> AgentIntent:
         query_lower = query.lower()
 
+        # Ambiguous / too-vague queries → GENERAL (triggers clarification request)
+        if len(query.split()) < 4:
+            return AgentIntent.GENERAL
+
         for intent, keywords in self.INTENT_KEYWORDS.items():
+            if intent == AgentIntent.GENERAL:
+                continue
             if any(kw in query_lower for kw in keywords):
                 return intent
 
@@ -218,34 +267,54 @@ class MedicalAgent:
         sanitized_query = self.safety.sanitize_input(query)
         steps.append(AgentStep(step_type="think", content="Input safety check passed"))
 
-        # Step 3: Use tools based on intent
+        # Steps 3-4: ReAct loop — tool use + retrieval, up to MAX_REACT_ITERS
+        MAX_REACT_ITERS = 3
         tool_results_text = ""
-        if intent == AgentIntent.LAB_INTERPRETATION:
-            tool_result = self._use_lab_tool(sanitized_query)
+        retrieval = None
+
+        for react_iter in range(MAX_REACT_ITERS):
+            # --- Tool selection (intent-driven) ---
+            tool_result = None
+            if intent == AgentIntent.LAB_INTERPRETATION and react_iter == 0:
+                tool_result = self._use_lab_tool(sanitized_query)
+                tool_label = "lookup_lab_reference"
+            elif intent == AgentIntent.DRUG_INFO and react_iter == 0:
+                tool_result = self._use_drug_tool(sanitized_query)
+                tool_label = "check_drug_info"
+            elif intent == AgentIntent.GUIDELINES and react_iter == 0:
+                tool_result = self._use_guidelines_tool(sanitized_query)
+                tool_label = "search_clinical_guidelines"
+            else:
+                tool_label = None
+
             if tool_result:
                 tool_responses.append(tool_result)
-                tool_results_text = tool_result.to_context_string()
-                steps.append(AgentStep(step_type="act", content="Used lab lookup tool",
-                                       tool_name="lookup_lab_reference", tool_result=tool_result.to_dict()))
+                tool_results_text += "\n" + tool_result.to_context_string()
+                steps.append(AgentStep(step_type="act", content=f"Used {tool_label}",
+                                       tool_name=tool_label, tool_result=tool_result.to_dict()))
+                steps.append(AgentStep(step_type="observe", content=f"Tool returned: {tool_result.status.value}"))
 
-        elif intent == AgentIntent.DRUG_INFO:
-            tool_result = self._use_drug_tool(sanitized_query)
-            if tool_result:
-                tool_responses.append(tool_result)
-                tool_results_text = tool_result.to_context_string()
-                steps.append(AgentStep(step_type="act", content="Used drug info tool",
-                                       tool_name="check_drug_info", tool_result=tool_result.to_dict()))
+            # --- RAG retrieval ---
+            retrieval_query = sanitized_query
+            retrieval = self.rag.retrieve(retrieval_query)
+            steps.append(AgentStep(step_type="observe",
+                                   content=f"[iter {react_iter+1}] Retrieved {len(retrieval.chunks)} chunks "
+                                           f"(quality: {retrieval.quality_score:.2f})"))
 
-        elif intent == AgentIntent.GUIDELINES:
-            tool_result = self._use_guidelines_tool(sanitized_query)
-            if tool_result:
-                tool_responses.append(tool_result)
-                tool_results_text = tool_result.to_context_string()
-                steps.append(AgentStep(step_type="act", content="Used guidelines tool",
-                                       tool_name="search_clinical_guidelines", tool_result=tool_result.to_dict()))
+            # --- Decide whether to continue ---
+            # Stop if context is sufficient or last iteration
+            if retrieval.sufficient_context or react_iter == MAX_REACT_ITERS - 1:
+                break
+            # Widen query on next iteration using extracted facts
+            facts = self.memory.extracted_facts
+            if facts.get("condition"):
+                sanitized_query = f"{sanitized_query} {facts['condition']}"
+            steps.append(AgentStep(step_type="think",
+                                   content=f"Context insufficient (quality={retrieval.quality_score:.2f}), refining query"))
 
-        # Step 4: RAG retrieval
-        retrieval = self.rag.retrieve(sanitized_query)
+        # Ensure retrieval is always set
+        if retrieval is None:
+            retrieval = self.rag.retrieve(sanitized_query)
         trace.retrieval_result = {
             "chunks_found": len(retrieval.chunks),
             "quality_score": retrieval.quality_score,
@@ -338,9 +407,10 @@ class MedicalAgent:
         return None
 
     def _use_drug_tool(self, query: str) -> Optional[ToolResponse]:
-        drugs = ["methotrexate", "adalimumab", "infliximab"]
-        for drug in drugs:
-            if drug.lower() in query.lower():
+        from pipeline.lib.tools import DRUG_INTERACTIONS
+        query_lower = query.lower()
+        for drug in DRUG_INTERACTIONS:
+            if drug.lower() in query_lower:
                 return self.tools.execute("check_drug_info", drug_name=drug)
         return None
 
@@ -357,6 +427,18 @@ class MedicalAgent:
 
     def _fallback_response(self, intent: AgentIntent, query: str, retrieval: RetrievalResult) -> str:
         """Generate a structured fallback response when no LLM is available."""
+        # Detect ambiguous / too-short queries and ask for clarification
+        if len(query.split()) < 5 or query.strip().rstrip("?.!") in (
+            "is it bad", "what is it", "how is it", "tell me more", "explain", "why"
+        ):
+            return (
+                "Could you please provide more specific information? "
+                "What condition, symptom, or treatment are you asking about? "
+                "For example: 'Is rheumatoid arthritis serious?' or "
+                "'What does a high CRP level mean for my condition?'\n\n"
+                "The more detail you provide, the more specific and useful my response can be."
+            )
+
         parts = [f"**Summary**: Based on available medical literature regarding your question about {intent.value}.\n"]
 
         if retrieval.chunks:

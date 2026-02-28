@@ -27,13 +27,15 @@ logger = logging.getLogger(__name__)
 
 class _RAGConfig:
     vector_db_path = str(Path("./data/vector_store"))
-    embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model = "BAAI/bge-base-en-v1.5"
     chunk_size = 1500
     chunk_overlap = 200
     top_k = 5
+    rerank_top_k = 15           # candidates sent to cross-encoder before final top_k cut
     similarity_threshold = 0.7
     use_hybrid_retrieval = True
     use_reranking = True
+    reranker_model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     metadata_filters_enabled = True
 
 RAG_CONFIG = _RAGConfig()
@@ -68,14 +70,17 @@ class RetrievalResult:
 
 
 class VectorStore:
-    """Simple FAISS-based vector store for medical literature."""
+    """FAISS-based vector store with BM25 hybrid search for medical literature."""
 
-    def __init__(self, dimension: int = 384):
+    def __init__(self, dimension: int = 768):  # 768 for bge-base-en-v1.5
         self.dimension = dimension
         self.index = None
         self.chunks: List[Dict] = []
         self.embeddings: List[np.ndarray] = []
         self._encoder = None
+        self._reranker = None
+        self._bm25 = None          # BM25 index rebuilt on add_chunks
+        self._bm25_corpus = []     # tokenised corpus for BM25
         self._init_index()
 
     def _init_index(self):
@@ -105,12 +110,31 @@ class VectorStore:
         embeddings = encoder.encode(texts, normalize_embeddings=True, show_progress_bar=False)
         return np.array(embeddings, dtype=np.float32)
 
+    def _get_reranker(self):
+        if self._reranker is None and RAG_CONFIG.use_reranking:
+            try:
+                from sentence_transformers import CrossEncoder
+                self._reranker = CrossEncoder(RAG_CONFIG.reranker_model)
+            except Exception as e:
+                logger.warning(f"Reranker unavailable: {e}")
+                self._reranker = "unavailable"
+        return self._reranker if self._reranker != "unavailable" else None
+
+    def _rebuild_bm25(self):
+        try:
+            from rank_bm25 import BM25Okapi
+            self._bm25_corpus = [c.get("text", "").lower().split() for c in self.chunks]
+            self._bm25 = BM25Okapi(self._bm25_corpus)
+        except ImportError:
+            self._bm25 = None
+
     def add_chunks(self, chunks: List[Dict]):
         texts = [c.get("text", "") for c in chunks]
         embeddings = self.encode(texts)
         if embeddings is None:
             logger.warning("Could not encode chunks, storing without embeddings")
             self.chunks.extend(chunks)
+            self._rebuild_bm25()
             return
 
         for i, chunk in enumerate(chunks):
@@ -122,6 +146,8 @@ class VectorStore:
         if self.index is not None:
             import faiss
             self.index.add(embeddings)
+
+        self._rebuild_bm25()
 
     def search(self, query: str, top_k: int = 5, metadata_filter: Optional[Dict] = None) -> List[RetrievedChunk]:
         query_embedding = self.encode([query])
@@ -176,14 +202,30 @@ class VectorStore:
         return results
 
     def _keyword_search(self, query: str, top_k: int) -> List[RetrievedChunk]:
-        """BM25-style keyword fallback when embeddings unavailable."""
+        """BM25Okapi keyword search. Falls back to naive overlap if rank_bm25 unavailable."""
+        if self._bm25 is not None:
+            query_tokens = query.lower().split()
+            scores = self._bm25.get_scores(query_tokens)
+            top_indices = np.argsort(scores)[::-1][:top_k]
+            return [
+                RetrievedChunk(
+                    text=self.chunks[i].get("text", ""),
+                    source=self.chunks[i].get("source", "unknown"),
+                    paper_title=self.chunks[i].get("paper_title", "Unknown"),
+                    section=self.chunks[i].get("section", "body"),
+                    score=float(scores[i]),
+                    chunk_id=self.chunks[i].get("chunk_id", ""),
+                    metadata=self.chunks[i],
+                )
+                for i in top_indices if i < len(self.chunks)
+            ]
+
+        # naive fallback
         query_terms = set(query.lower().split())
         scored = []
         for chunk in self.chunks:
-            text = chunk.get("text", "").lower()
-            text_terms = set(text.split())
-            overlap = len(query_terms & text_terms)
-            score = overlap / max(len(query_terms), 1)
+            text_terms = set(chunk.get("text", "").lower().split())
+            score = len(query_terms & text_terms) / max(len(query_terms), 1)
             scored.append((score, chunk))
         scored.sort(key=lambda x: x[0], reverse=True)
         return [
@@ -241,6 +283,7 @@ class VectorStore:
                 except ImportError:
                     pass
 
+        self._rebuild_bm25()
         logger.info(f"Vector store loaded: {len(self.chunks)} chunks")
         return True
 
@@ -275,22 +318,77 @@ class RAGPipeline:
         self.vector_store.add_chunks(chunks)
         self.vector_store.save(self.config.vector_db_path)
 
+    # Max tokens to use for RAG context (leave room for prompt + response).
+    # 2500 ~ 3 full-length chunks; keeps context informative without blowing the window.
+    _MAX_CONTEXT_TOKENS = 2500
+
+    @staticmethod
+    def _approx_tokens(text: str) -> int:
+        """Rough token estimate: ~4 chars per token."""
+        return len(text) // 4
+
+    def _truncate_context(self, chunks: List[RetrievedChunk]) -> List[RetrievedChunk]:
+        """Drop lowest-scoring chunks until context fits within token budget."""
+        total = 0
+        kept = []
+        for chunk in chunks:  # already sorted by score desc
+            t = self._approx_tokens(chunk.text)
+            if total + t > self._MAX_CONTEXT_TOKENS:
+                break
+            kept.append(chunk)
+            total += t
+        return kept if kept else chunks[:1]  # always keep at least one
+
     def retrieve(
         self,
         query: str,
         top_k: Optional[int] = None,
         metadata_filter: Optional[Dict] = None,
+        generate_fn=None,  # optional LLM fn(prompt)->str for HyDE
     ) -> RetrievalResult:
-        """Retrieve relevant context for a query."""
+        """Retrieve relevant context for a query, with optional HyDE expansion."""
         top_k = top_k or self.config.top_k
 
-        dense_results = self.vector_store.search(query, top_k=top_k, metadata_filter=metadata_filter)
+        # HyDE: if LLM available, generate a hypothetical answer and blend embeddings
+        hyde_query = query
+        if generate_fn is not None:
+            try:
+                hyde_prompt = (
+                    f"Write a concise medical answer (3-4 sentences) to: {query}\n"
+                    f"Answer based on clinical knowledge:"
+                )
+                hypothetical = generate_fn(hyde_prompt)
+                if hypothetical and len(hypothetical) > 20:
+                    hyde_query = f"{query}\n\n{hypothetical[:400]}"
+            except Exception:
+                hyde_query = query
+
+        # Fetch more candidates before reranking
+        fetch_k = self.config.rerank_top_k if self.config.use_reranking else top_k
+        dense_results = self.vector_store.search(hyde_query, top_k=fetch_k, metadata_filter=metadata_filter)
 
         if self.config.use_hybrid_retrieval:
-            keyword_results = self.vector_store._keyword_search(query, top_k=top_k)
-            combined = self._merge_results(dense_results, keyword_results, top_k)
+            keyword_results = self.vector_store._keyword_search(hyde_query, top_k=fetch_k)
+            combined = self._merge_results(dense_results, keyword_results, fetch_k)
         else:
             combined = dense_results
+
+        # Cross-encoder reranking
+        if self.config.use_reranking and len(combined) > 1:
+            reranker = self.vector_store._get_reranker()
+            if reranker is not None:
+                pairs = [(query, c.text) for c in combined]
+                try:
+                    rerank_scores = reranker.predict(pairs)
+                    for chunk, score in zip(combined, rerank_scores):
+                        chunk.score = float(score)
+                    combined.sort(key=lambda c: c.score, reverse=True)
+                except Exception as e:
+                    logger.warning(f"Reranking failed, using RRF order: {e}")
+        combined = combined[:top_k]
+
+        # Context window management — drop low-scoring chunks that won't fit
+        combined = self._truncate_context(combined)
 
         quality_score = self._assess_retrieval_quality(query, combined)
         sufficient = quality_score >= self.config.similarity_threshold
@@ -344,11 +442,21 @@ class RAGPipeline:
         return results
 
     def _assess_retrieval_quality(self, query: str, chunks: List[RetrievedChunk]) -> float:
-        """Assess retrieval quality based on relevance signals."""
+        """
+        Assess retrieval quality based on relevance signals.
+
+        Uses sigmoid normalisation on chunk scores so that both cosine-similarity
+        values (already 0-1) and cross-encoder logits (unbounded) are mapped to
+        a sensible 0-1 range.
+        """
         if not chunks:
             return 0.0
 
-        avg_score = np.mean([c.score for c in chunks]) if chunks else 0.0
+        import math
+        raw_avg = float(np.mean([c.score for c in chunks]))
+        # sigmoid: score=0 → 0.5, score=3 → 0.95, score=-3 → 0.05
+        norm_score = 1.0 / (1.0 + math.exp(-raw_avg))
+
         query_terms = set(query.lower().split())
         term_coverage = 0
         for chunk in chunks:
@@ -358,5 +466,5 @@ class RAGPipeline:
         avg_coverage = term_coverage / len(chunks)
         source_diversity = len(set(c.source for c in chunks)) / max(len(chunks), 1)
 
-        quality = (0.4 * min(avg_score, 1.0)) + (0.4 * avg_coverage) + (0.2 * source_diversity)
+        quality = (0.4 * norm_score) + (0.4 * avg_coverage) + (0.2 * source_diversity)
         return min(max(quality, 0.0), 1.0)

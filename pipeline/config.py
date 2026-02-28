@@ -116,11 +116,14 @@ TRAINING_TIERS = {
         "vram_range": "24-39 GB",
     },
     "maximum": {
-        "method": "High-Rank LoRA", "rank": 256, "alpha": 512,
+        # Fixed: was seq_length=512 which wasted the extra VRAM headroom.
+        # At 40+ GB we can run rank-64 with full 2048 context and batch_size=2.
+        # Rank-256 with 512 context is worse than rank-64 with 2048 context.
+        "method": "High-Rank LoRA", "rank": 64, "alpha": 128,
         "targets": ["q_proj", "k_proj", "v_proj", "o_proj",
                      "gate_proj", "up_proj", "down_proj"],
-        "use_dora": False, "batch_size": 1, "grad_accum": 32,
-        "seq_length": 512, "lr": 5e-5,
+        "use_dora": False, "batch_size": 2, "grad_accum": 16,
+        "seq_length": 2048, "lr": 5e-5,
         "vram_range": "40+ GB",
     },
 }
@@ -182,8 +185,16 @@ def check_cuda() -> Dict[str, Any]:
     return info
 
 
-def get_vram_gb() -> float:
+def get_vram_gb(per_device: bool = False) -> float:
+    """Return total VRAM or per-device VRAM (min across GPUs).
+
+    Use per_device=True for tier selection when training on a single GPU
+    (device_map='cuda:0') to avoid selecting a tier designed for multi-GPU
+    total VRAM.
+    """
     info = check_cuda()
+    if per_device and info.get("devices"):
+        return min(d["vram_gb"] for d in info["devices"])
     return info["total_vram_gb"]
 
 
@@ -204,15 +215,17 @@ def clear_gpu():
 def get_quantization_config():
     import torch
     from transformers import BitsAndBytesConfig
+    # RTX 3090 (SM 8.6) does not support BF16 tensor-core GEMM (CUBLAS_STATUS_NOT_SUPPORTED).
+    # Use float16 which is fully supported on Ampere consumer GPUs.
     return BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_compute_dtype=torch.float16,
         bnb_4bit_use_double_quant=True,
     )
 
 
-def load_model_and_tokenizer(model_name=None, quantize=True, device_map="auto"):
+def load_model_and_tokenizer(model_name=None, quantize=True, device_map="cuda:0"):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -221,7 +234,7 @@ def load_model_and_tokenizer(model_name=None, quantize=True, device_map="auto"):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    kwargs = {"torch_dtype": torch.bfloat16, "device_map": device_map, "trust_remote_code": True}
+    kwargs = {"torch_dtype": torch.float16, "device_map": device_map, "trust_remote_code": True}
     if quantize:
         kwargs["quantization_config"] = get_quantization_config()
 
@@ -264,7 +277,8 @@ def format_prompt(question, system_prompt=None, tokenizer=None, use_thinking=Tru
 
 
 def generate_response(model, tokenizer, prompt, max_new_tokens=1024,
-                      temperature=0.7, top_p=0.9, do_sample=True):
+                      temperature=0.7, top_p=0.9, do_sample=True,
+                      repetition_penalty=1.0):
     import torch
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     input_len = inputs['input_ids'].shape[1]
@@ -275,11 +289,14 @@ def generate_response(model, tokenizer, prompt, max_new_tokens=1024,
             **inputs, max_new_tokens=max_new_tokens,
             temperature=temperature, top_p=top_p, do_sample=do_sample,
             pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id,
+            repetition_penalty=repetition_penalty,
         )
     gen_time = time.time() - start
 
-    full = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    response = full[len(prompt):].strip()
+    # Decode only the newly generated tokens — avoids prompt-length offset bugs
+    # when skip_special_tokens strips markers that were in the original prompt string.
+    generated_ids = outputs[0][input_len:]
+    response = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
     for marker in ["<｜end▁of▁sentence｜>", "</s>", "<|endoftext|>"]:
         if marker in response:
             response = response.split(marker)[0].strip()
@@ -326,6 +343,70 @@ def print_step(step_num, title):
 # =============================================================================
 # BENCHMARK QUESTIONS
 # =============================================================================
+
+# Gold-standard reference answers — used for RAGAS answer_correctness metric.
+# One concise clinical summary per question ID; grounded in published guidelines.
+AUTOIMMUNE_GROUND_TRUTH = {
+    "RA001": (
+        "The 2010 ACR/EULAR classification criteria score joint involvement (0-5), serology RF/anti-CCP (0-3), "
+        "acute-phase reactants CRP/ESR (0-1), and symptom duration (0-1); ≥6/10 classifies RA. "
+        "RF sensitivity ~70%, specificity ~85%; anti-CCP sensitivity ~67%, specificity >95%. "
+        "Anti-CCP positivity predicts erosive, progressive disease and justifies early aggressive therapy."
+    ),
+    "RA002": (
+        "Anti-CCP 120 U/mL with bilateral wrist synovitis >6 weeks strongly suggests early seropositive RA "
+        "(2010 ACR/EULAR score likely ≥6). MRI detects subclinical synovitis before erosions appear. "
+        "Recommended workup: baseline X-rays hands/feet, MRI wrists, CBC, LFTs, hepatitis serology before MTX. "
+        "Treat-to-target remission (DAS28 <2.6) should begin within 3 months of symptom onset."
+    ),
+    "RA003": (
+        "Anti-CCP >200 U/mL with DAS28 5.8 indicates high disease activity, seropositive erosive RA with poor prognosis. "
+        "ACR/EULAR guidelines recommend triple-therapy DMARDs (MTX + SSZ + HCQ) or MTX monotherapy as first-line. "
+        "Add biologic (TNF inhibitor or IL-6 blocker) if DAS28 remains >3.2 after 3-6 months of MTX optimisation. "
+        "Target DAS28 <2.6 (remission) or <3.2 (low disease activity) with monthly reassessment."
+    ),
+    "CD001": (
+        "Crohn's disease diagnosis requires endoscopic, histological, and radiological evidence of transmural inflammation. "
+        "Skip lesions, cobblestone mucosa, and aphthous ulcers on ileocolonoscopy are hallmarks. "
+        "Fecal calprotectin >150 µg/g and CRP >5 mg/L indicate active mucosal inflammation. "
+        "Workup: MRI enterography for small bowel extent, ASCA/ANCA serology, histology, stool cultures to exclude infection."
+    ),
+    "CD002": (
+        "Fecal calprotectin 680 µg/g, CRP 52 mg/L, and positive ASCA with ileocolonic involvement indicate severe Crohn's "
+        "with high risk of complications and surgery. First-line biologic: anti-TNF (infliximab preferred for rapid onset "
+        "in severe disease) or ustekinumab (IL-12/23 inhibitor). Combination with immunomodulator reduces immunogenicity. "
+        "Target clinical remission (CDAI <150) and mucosal healing within 6-12 months."
+    ),
+    "CD003": (
+        "For moderate-to-severe Crohn's (CDAI 280) failing budesonide and mesalamine, step-up to biologic therapy is indicated. "
+        "Anti-TNF agents (infliximab 5 mg/kg IV or adalimumab 160/80/40 mg) achieve 30-40% remission rates. "
+        "Ileocolonic disease without perianal complications: infliximab or vedolizumab are first choices. "
+        "Combination with azathioprine or MTX reduces antibody formation and improves sustained remission."
+    ),
+    "REM001": (
+        "Biomarkers predicting first-line remission: high anti-CCP titre and elevated CRP favour biologic over conventional DMARDs in RA. "
+        "ASCA+/ANCA- pattern, elevated calprotectin, and isolated ileal Crohn's favour anti-TNF as first biologic. "
+        "Patient factors: MTX contraindicated in hepatic disease (prefer leflunomide); pregnancy planned (prefer certolizumab). "
+        "Treat-to-target with monthly DAS28/CDAI monitoring and therapy adjustment within 3 months of initiating a new agent."
+    ),
+    "Q001": (
+        "Malar rash, photosensitivity, oral ulcers, and polyarthritis with ANA 1:640 and elevated anti-dsDNA meet ≥4 "
+        "of 11 ACR criteria (or SLICC 2012 criteria) for SLE. Anti-dsDNA antibodies are highly specific (>95%) and correlate "
+        "with lupus nephritis activity. Priority workup: urinalysis/protein-creatinine ratio, complement C3/C4, anti-Sm, anti-phospholipid panel, CBC for cytopenias."
+    ),
+    "Q002": (
+        "Sjogren's syndrome is classified by 2016 ACR/EULAR criteria: lip biopsy focal lymphocytic sialadenitis score ≥1 foci/4mm² (weight 3), "
+        "anti-SSA/Ro positive (weight 3), Schirmer's ≤5 mm/5 min (weight 1), ocular staining score ≥5 (weight 1), unstimulated salivary flow ≤0.1 mL/min (weight 1). "
+        "Systemic complications: interstitial lung disease, peripheral neuropathy, B-cell lymphoma (44× increased risk), vasculitis, renal tubular acidosis."
+    ),
+    "Q003": (
+        "Fatigue, arthralgia, positive ANA with low complement suggests SLE. Concurrent hyperthyroidism may represent Hashimoto's thyroiditis (polyautoimmunity). "
+        "Vitiligo indicates additional organ-specific autoimmunity (autoimmune polyglandular syndrome). "
+        "Differential: SLE with secondary organ-specific disease vs MCTD vs undifferentiated connective tissue disease. "
+        "Key tests: anti-dsDNA, anti-Sm, anti-Ro/La, anti-U1-RNP, TSH, free T4, anti-TPO antibodies, complete ANA ENA panel."
+    ),
+}
+
 
 AUTOIMMUNE_QUESTIONS = [
     {"id": "RA001", "category": "Rheumatoid Arthritis - Early Diagnosis", "difficulty": "medium",

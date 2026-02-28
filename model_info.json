@@ -1,0 +1,22 @@
+{
+  "model": "nvidia/Nemotron-Cascade-8B-Thinking",
+  "tier": "maximum",
+  "gpu": {
+    "available": true,
+    "total_vram_gb": 47.12,
+    "devices": [
+      {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 3090",
+        "vram_gb": 23.56
+      },
+      {
+        "index": 1,
+        "name": "NVIDIA GeForce RTX 3090",
+        "vram_gb": 23.56
+      }
+    ],
+    "version": "13.0"
+  },
+  "test_time": 14.812724590301514
+}

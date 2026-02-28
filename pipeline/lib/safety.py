@@ -11,8 +11,9 @@ Key principle: "No single guardrail is enough."
 """
 
 import re
+import unicodedata
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
@@ -173,6 +174,17 @@ class ContentSafetyFilter:
         (r'\b(?:stop\s+(?:taking|all)\s+(?:your|my)\s+(?:medication|treatment))\b', "dangerous_advice", SafetyLevel.UNSAFE),
     ]
 
+    PROMPT_INJECTION_PATTERNS = [
+        (r'ignore\s+(?:your\s+)?(?:previous|prior|above|all)\s+instructions?', "prompt_injection"),
+        (r'disregard\s+(?:your\s+)?(?:previous|prior|above|all)\s+instructions?', "prompt_injection"),
+        (r'you\s+are\s+now\s+(?:a|an|the)\s+\w+', "role_override"),
+        (r'(?:act|pretend|roleplay|simulate)\s+(?:as|like)\s+(?:a|an)\s+\w+\s+(?:without|that\s+(?:ignores?|has\s+no))', "role_override"),
+        (r'(?:new\s+)?system\s+prompt[\s:]+', "system_override"),
+        (r'(?:jailbreak|dan\s+mode|developer\s+mode)', "jailbreak"),
+        (r'reveal\s+(?:your\s+)?(?:system\s+prompt|instructions?|training)', "extraction"),
+        (r'what\s+(?:are|is)\s+your\s+(?:system\s+prompt|instructions?|initial\s+prompt)', "extraction"),
+    ]
+
     MEDICAL_SAFETY_CHECKS = [
         (r'\byou\s+(?:have|definitely\s+have)\s+(?:cancer|lupus|RA|Crohn)', "definitive_diagnosis"),
         (r'\btake\s+\d+\s*(?:mg|ml|g)\s+(?:of\s+)?\w+\b', "specific_dosage"),
@@ -180,18 +192,29 @@ class ContentSafetyFilter:
         (r'\bstop\s+(?:seeing|visiting)\s+(?:your\s+)?(?:doctor|physician)\b', "discouraging_care"),
     ]
 
+    @staticmethod
+    def _normalize(text: str) -> str:
+        """NFKC-normalize to catch Unicode homoglyph bypasses."""
+        return unicodedata.normalize("NFKC", text)
+
     def check_input(self, text: str) -> SafetyCheckResult:
-        """Check user input for safety concerns."""
+        """Check user input for safety concerns, including prompt injection."""
+        normalized = self._normalize(text)
         issues = []
         level = SafetyLevel.SAFE
 
         for pattern, category, severity in self.DANGEROUS_PATTERNS:
-            if re.search(pattern, text, re.IGNORECASE):
+            if re.search(pattern, normalized, re.IGNORECASE):
                 issues.append(f"Input safety concern: {category}")
                 if severity.value == "blocked":
                     level = SafetyLevel.BLOCKED
                 elif level != SafetyLevel.BLOCKED:
                     level = severity
+
+        for pattern, category in self.PROMPT_INJECTION_PATTERNS:
+            if re.search(pattern, normalized, re.IGNORECASE):
+                issues.append(f"Prompt injection detected: {category}")
+                level = SafetyLevel.BLOCKED
 
         return SafetyCheckResult(
             safe=level == SafetyLevel.SAFE,
@@ -253,6 +276,48 @@ class BiasDetector:
         return flags
 
 
+class LLMSafetyClassifier:
+    """
+    Optional second-layer LLM-based safety check.
+    Uses the already-loaded model (or a cross-encoder) to catch adversarial inputs
+    that regex patterns miss. Initialise with a loaded model+tokenizer, or leave
+    as None to skip (regex layer still applies).
+    """
+
+    # Concise safety prompt — model answers "SAFE" or "UNSAFE"
+    _PROMPT = (
+        "You are a medical AI safety classifier. "
+        "Determine if the following user message is safe for a clinical-support chatbot. "
+        "Reply with exactly one word: SAFE or UNSAFE.\n\nUser message: {text}\n\nClassification:"
+    )
+
+    def __init__(self, model: Any = None, tokenizer: Any = None):
+        self._model = model
+        self._tokenizer = tokenizer
+
+    def classify(self, text: str) -> Tuple[bool, str]:
+        """Returns (is_safe, reason). Fails open (safe=True) if model unavailable."""
+        if self._model is None or self._tokenizer is None:
+            return True, "llm_classifier_not_loaded"
+        try:
+            import torch
+            prompt = self._PROMPT.format(text=text[:500])
+            inputs = self._tokenizer(prompt, return_tensors="pt").to(self._model.device)
+            with torch.no_grad():
+                output = self._model.generate(
+                    **inputs, max_new_tokens=5, do_sample=False,
+                    pad_token_id=self._tokenizer.pad_token_id,
+                )
+            answer = self._tokenizer.decode(
+                output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
+            ).strip().upper()
+            is_safe = "UNSAFE" not in answer
+            return is_safe, answer
+        except Exception as e:
+            logger.warning(f"LLM safety classifier error: {e}")
+            return True, "error"
+
+
 class SafetyPipeline:
     """
     Complete safety pipeline implementing defense-in-depth.
@@ -265,10 +330,11 @@ class SafetyPipeline:
     5. Disclaimer Enforcement (Application layer)
     """
 
-    def __init__(self):
+    def __init__(self, llm_model=None, llm_tokenizer=None):
         self.pii_detector = PIIDetector()
         self.content_filter = ContentSafetyFilter()
         self.bias_detector = BiasDetector()
+        self.llm_classifier = LLMSafetyClassifier(llm_model, llm_tokenizer)
         self.config = SAFETY_CONFIG
 
     def check_input(self, text: str) -> SafetyCheckResult:
@@ -283,6 +349,15 @@ class SafetyPipeline:
         if any(f["severity"] == "critical" for f in pii_findings):
             content_result.issues.append("Critical PII detected in input")
             content_result.recommendation = "redact"
+
+        # LLM second-layer check (only if regex passed to avoid double cost)
+        if content_result.level == SafetyLevel.SAFE:
+            is_safe, reason = self.llm_classifier.classify(text)
+            if not is_safe:
+                content_result.safe = False
+                content_result.level = SafetyLevel.BLOCKED
+                content_result.issues.append(f"LLM safety classifier: UNSAFE ({reason})")
+                content_result.recommendation = "block"
 
         return content_result
 
