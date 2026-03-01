@@ -50,7 +50,7 @@ def ensure_directories():
 # MODEL CONFIG
 # =============================================================================
 
-MODEL_NAME = os.getenv("MODEL_NAME", "nvidia/Nemotron-Cascade-8B-Thinking")
+MODEL_NAME = os.getenv("MODEL_NAME", "aaditya/Llama3-OpenBioLLM-8B")
 MAX_SEQ_LENGTH = int(os.getenv("MAX_SEQ_LENGTH", "2048"))
 PUBMED_EMAIL = os.getenv("PUBMED_EMAIL", "")
 
@@ -242,25 +242,7 @@ def load_model_and_tokenizer(model_name=None, quantize=True, device_map="cuda:0"
     return model, tokenizer
 
 
-def format_prompt(question, system_prompt=None, tokenizer=None, use_thinking=True):
-    model_lower = MODEL_NAME.lower()
-
-    if "nemotron" in model_lower or "cascade" in model_lower:
-        if tokenizer and hasattr(tokenizer, 'apply_chat_template'):
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            ctrl = "/think" if use_thinking else "/no_think"
-            messages.append({"role": "user", "content": f"{ctrl} {question}"})
-            try:
-                return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            except Exception:
-                pass
-        ctrl = "/think" if use_thinking else "/no_think"
-        if system_prompt:
-            return f"<|system|>\n{system_prompt}<|user|>\n{ctrl} {question}<|assistant|>\n"
-        return f"<|user|>\n{ctrl} {question}<|assistant|>\n"
-
+def format_prompt(question, system_prompt=None, tokenizer=None, **kwargs):
     if tokenizer and hasattr(tokenizer, 'apply_chat_template'):
         messages = []
         if system_prompt:
@@ -335,8 +317,9 @@ def print_header(title, char="=", width=60):
 
 
 def print_step(step_num, title):
+    label = f"{step_num:02d}" if isinstance(step_num, int) else str(step_num).upper()
     print(f"\n{'=' * 60}")
-    print(f"  STEP {step_num:02d}: {title}")
+    print(f"  STEP {label}: {title}")
     print(f"{'=' * 60}\n")
 
 
@@ -344,89 +327,25 @@ def print_step(step_num, title):
 # BENCHMARK QUESTIONS
 # =============================================================================
 
-# Gold-standard reference answers — used for RAGAS answer_correctness metric.
-# One concise clinical summary per question ID; grounded in published guidelines.
-AUTOIMMUNE_GROUND_TRUTH = {
-    "RA001": (
-        "The 2010 ACR/EULAR classification criteria score joint involvement (0-5), serology RF/anti-CCP (0-3), "
-        "acute-phase reactants CRP/ESR (0-1), and symptom duration (0-1); ≥6/10 classifies RA. "
-        "RF sensitivity ~70%, specificity ~85%; anti-CCP sensitivity ~67%, specificity >95%. "
-        "Anti-CCP positivity predicts erosive, progressive disease and justifies early aggressive therapy."
-    ),
-    "RA002": (
-        "Anti-CCP 120 U/mL with bilateral wrist synovitis >6 weeks strongly suggests early seropositive RA "
-        "(2010 ACR/EULAR score likely ≥6). MRI detects subclinical synovitis before erosions appear. "
-        "Recommended workup: baseline X-rays hands/feet, MRI wrists, CBC, LFTs, hepatitis serology before MTX. "
-        "Treat-to-target remission (DAS28 <2.6) should begin within 3 months of symptom onset."
-    ),
-    "RA003": (
-        "Anti-CCP >200 U/mL with DAS28 5.8 indicates high disease activity, seropositive erosive RA with poor prognosis. "
-        "ACR/EULAR guidelines recommend triple-therapy DMARDs (MTX + SSZ + HCQ) or MTX monotherapy as first-line. "
-        "Add biologic (TNF inhibitor or IL-6 blocker) if DAS28 remains >3.2 after 3-6 months of MTX optimisation. "
-        "Target DAS28 <2.6 (remission) or <3.2 (low disease activity) with monthly reassessment."
-    ),
-    "CD001": (
-        "Crohn's disease diagnosis requires endoscopic, histological, and radiological evidence of transmural inflammation. "
-        "Skip lesions, cobblestone mucosa, and aphthous ulcers on ileocolonoscopy are hallmarks. "
-        "Fecal calprotectin >150 µg/g and CRP >5 mg/L indicate active mucosal inflammation. "
-        "Workup: MRI enterography for small bowel extent, ASCA/ANCA serology, histology, stool cultures to exclude infection."
-    ),
-    "CD002": (
-        "Fecal calprotectin 680 µg/g, CRP 52 mg/L, and positive ASCA with ileocolonic involvement indicate severe Crohn's "
-        "with high risk of complications and surgery. First-line biologic: anti-TNF (infliximab preferred for rapid onset "
-        "in severe disease) or ustekinumab (IL-12/23 inhibitor). Combination with immunomodulator reduces immunogenicity. "
-        "Target clinical remission (CDAI <150) and mucosal healing within 6-12 months."
-    ),
-    "CD003": (
-        "For moderate-to-severe Crohn's (CDAI 280) failing budesonide and mesalamine, step-up to biologic therapy is indicated. "
-        "Anti-TNF agents (infliximab 5 mg/kg IV or adalimumab 160/80/40 mg) achieve 30-40% remission rates. "
-        "Ileocolonic disease without perianal complications: infliximab or vedolizumab are first choices. "
-        "Combination with azathioprine or MTX reduces antibody formation and improves sustained remission."
-    ),
-    "REM001": (
-        "Biomarkers predicting first-line remission: high anti-CCP titre and elevated CRP favour biologic over conventional DMARDs in RA. "
-        "ASCA+/ANCA- pattern, elevated calprotectin, and isolated ileal Crohn's favour anti-TNF as first biologic. "
-        "Patient factors: MTX contraindicated in hepatic disease (prefer leflunomide); pregnancy planned (prefer certolizumab). "
-        "Treat-to-target with monthly DAS28/CDAI monitoring and therapy adjustment within 3 months of initiating a new agent."
-    ),
-    "Q001": (
-        "Malar rash, photosensitivity, oral ulcers, and polyarthritis with ANA 1:640 and elevated anti-dsDNA meet ≥4 "
-        "of 11 ACR criteria (or SLICC 2012 criteria) for SLE. Anti-dsDNA antibodies are highly specific (>95%) and correlate "
-        "with lupus nephritis activity. Priority workup: urinalysis/protein-creatinine ratio, complement C3/C4, anti-Sm, anti-phospholipid panel, CBC for cytopenias."
-    ),
-    "Q002": (
-        "Sjogren's syndrome is classified by 2016 ACR/EULAR criteria: lip biopsy focal lymphocytic sialadenitis score ≥1 foci/4mm² (weight 3), "
-        "anti-SSA/Ro positive (weight 3), Schirmer's ≤5 mm/5 min (weight 1), ocular staining score ≥5 (weight 1), unstimulated salivary flow ≤0.1 mL/min (weight 1). "
-        "Systemic complications: interstitial lung disease, peripheral neuropathy, B-cell lymphoma (44× increased risk), vasculitis, renal tubular acidosis."
-    ),
-    "Q003": (
-        "Fatigue, arthralgia, positive ANA with low complement suggests SLE. Concurrent hyperthyroidism may represent Hashimoto's thyroiditis (polyautoimmunity). "
-        "Vitiligo indicates additional organ-specific autoimmunity (autoimmune polyglandular syndrome). "
-        "Differential: SLE with secondary organ-specific disease vs MCTD vs undifferentiated connective tissue disease. "
-        "Key tests: anti-dsDNA, anti-Sm, anti-Ro/La, anti-U1-RNP, TSH, free T4, anti-TPO antibodies, complete ANA ENA panel."
-    ),
-}
+_BENCHMARK_FILE = PROJECT_ROOT / "pipeline" / "autoimmune_remission_benchmark_100_v1.json"
+_benchmark = load_json(_BENCHMARK_FILE) or {}
 
+# Prefer the versioned 100-question remission benchmark if present.
+if isinstance(_benchmark, dict) and _benchmark.get("questions") and _benchmark.get("ground_truth"):
+    AUTOIMMUNE_QUESTIONS = _benchmark["questions"]
+    AUTOIMMUNE_GROUND_TRUTH = _benchmark["ground_truth"]
+else:
+    # Fallback minimal benchmark (legacy)
+    AUTOIMMUNE_GROUND_TRUTH = {
+        "RA001": (
+            "The 2010 ACR/EULAR classification criteria score joint involvement (0-5), serology RF/anti-CCP (0-3), "
+            "acute-phase reactants CRP/ESR (0-1), and symptom duration (0-1); ≥6/10 classifies RA. "
+            "RF sensitivity ~70%, specificity ~85%; anti-CCP sensitivity ~67%, specificity >95%. "
+            "Anti-CCP positivity predicts erosive, progressive disease and justifies early aggressive therapy."
+        ),
+    }
 
-AUTOIMMUNE_QUESTIONS = [
-    {"id": "RA001", "category": "Rheumatoid Arthritis - Early Diagnosis", "difficulty": "medium",
-     "question": "A 45-year-old patient has symmetric polyarthritis affecting wrists, MCPs, and PIPs for 6 months, with morning stiffness lasting over 1 hour. RF and anti-CCP antibodies are positive. Explain the diagnostic criteria for rheumatoid arthritis and the significance of these serological markers for early diagnosis."},
-    {"id": "RA002", "category": "Rheumatoid Arthritis - Early Diagnosis", "difficulty": "medium",
-     "question": "A 38-year-old woman presents with 3 months of bilateral wrist pain and morning stiffness lasting 45 minutes. X-rays show no erosions. Anti-CCP is positive at 120 U/mL, RF is negative, ESR is 28 mm/h, CRP is 12 mg/L. What is the likelihood this is early RA, and what additional tests or monitoring would you recommend to confirm diagnosis before joint damage occurs?"},
-    {"id": "RA003", "category": "Rheumatoid Arthritis - Biomarkers", "difficulty": "hard",
-     "question": "A newly diagnosed RA patient has high anti-CCP titers (>200 U/mL), positive RF, elevated CRP (45 mg/L), and high disease activity score (DAS28 = 5.8). What do these biomarkers predict about disease course, and which single treatment approach would you recommend to achieve remission most efficiently?"},
-    {"id": "CD001", "category": "Crohn's Disease - Early Diagnosis", "difficulty": "medium",
-     "question": "A 25-year-old patient presents with 4 months of abdominal pain, diarrhea (5-6 loose stools/day), weight loss of 8 kg, and perianal fistulas. Fecal calprotectin is 450 ug/g, CRP is 35 mg/L. Colonoscopy shows patchy inflammation in terminal ileum and right colon with skip lesions. What diagnostic criteria confirm Crohn's disease, and what additional tests are needed for complete assessment?"},
-    {"id": "CD002", "category": "Crohn's Disease - Biomarkers", "difficulty": "hard",
-     "question": "A newly diagnosed Crohn's patient has elevated fecal calprotectin (680 ug/g), high CRP (52 mg/L), positive ASCA antibodies, and extensive ileocolonic disease on imaging. What do these biomarkers indicate about disease severity and prognosis? Which single treatment would you select to achieve remission based on these markers?"},
-    {"id": "CD003", "category": "Crohn's Disease - Treatment Selection", "difficulty": "very_hard",
-     "question": "A 30-year-old with moderate-to-severe Crohn's disease (CDAI = 280) has failed mesalamine and budesonide. They have ileocolonic disease, no perianal complications, and elevated CRP. What single biologic therapy would you choose to maximize first-line remission rates, and what patient factors or biomarkers guide this decision?"},
-    {"id": "REM001", "category": "Remission Strategy", "difficulty": "very_hard",
-     "question": "Current autoimmune disease treatment often requires sequential trials of 3-5 different medications before achieving remission. What factors (biomarkers, disease characteristics, patient factors) should guide initial treatment selection to maximize the probability of achieving remission with a single first-line therapy?"},
-    {"id": "Q001", "category": "Systemic Lupus Erythematosus", "difficulty": "medium",
-     "question": "A 28-year-old woman presents with malar rash, photosensitivity, oral ulcers, and joint pain. Her ANA is positive at 1:640 with a speckled pattern, and anti-dsDNA antibodies are elevated. What is the most likely diagnosis, and what are the key diagnostic criteria you would use?"},
-    {"id": "Q002", "category": "Sjogren's Syndrome", "difficulty": "hard",
-     "question": "A 52-year-old woman complains of dry eyes and dry mouth for 2 years. Schirmer's test is abnormal, and she has positive anti-SSA/Ro and anti-SSB/La antibodies. What diagnostic criteria would you use to confirm Sjogren's syndrome, and what are the potential systemic complications?"},
-    {"id": "Q003", "category": "Differential Diagnosis", "difficulty": "very_hard",
-     "question": "A 35-year-old woman has fatigue, joint pain, positive ANA, and low complement levels. However, she also has hyperthyroidism and vitiligo. How would you differentiate between multiple autoimmune conditions versus a single systemic autoimmune disease?"},
-]
+    AUTOIMMUNE_QUESTIONS = [
+        {"id": "RA001", "category": "Rheumatoid Arthritis - Early Diagnosis", "difficulty": "medium",
+         "question": "A 45-year-old patient has symmetric polyarthritis affecting wrists, MCPs, and PIPs for 6 months, with morning stiffness lasting over 1 hour. RF and anti-CCP antibodies are positive. Explain the diagnostic criteria for rheumatoid arthritis and the significance of these serological markers for early diagnosis."},
+    ]

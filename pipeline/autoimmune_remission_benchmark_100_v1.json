@@ -1,0 +1,723 @@
+{
+  "version": "autoimmune_remission_100_v1",
+  "created_at": "2026-03-01",
+  "scope": "Remission-focused autoimmune clinical-support benchmark. Educational content only; not medical advice.",
+  "notes": [
+    "Questions prioritize treat-to-target strategies and measurable remission endpoints.",
+    "Ground-truth answers are concise reference key points intended for evaluation (answer_correctness) and training replay; they are not exhaustive."
+  ],
+  "questions": [
+    {
+      "id": "RA001",
+      "category": "Rheumatoid Arthritis - Remission Definitions",
+      "difficulty": "medium",
+      "question": "What does 'remission' mean in rheumatoid arthritis under treat-to-target care, and how do Boolean remission and SDAI remission differ in practice?"
+    },
+    {
+      "id": "RA002",
+      "category": "Rheumatoid Arthritis - Treat-to-Target",
+      "difficulty": "medium",
+      "question": "A patient with newly diagnosed RA starts therapy. What are the treat-to-target principles (visit cadence, metric choice, and escalation timeline) that maximize the chance of achieving remission within 6 months?"
+    },
+    {
+      "id": "RA003",
+      "category": "Rheumatoid Arthritis - Predictors of Remission",
+      "difficulty": "hard",
+      "question": "Which baseline features predict a lower probability of remission in RA (e.g., high anti-CCP, smoking, obesity, erosions), and how should that change initial therapy intensity and monitoring?"
+    },
+    {
+      "id": "RA004",
+      "category": "Rheumatoid Arthritis - Biomarkers and Monitoring",
+      "difficulty": "hard",
+      "question": "How should CRP/ESR, ultrasound/MRI synovitis, and patient-reported outcomes be combined to avoid 'false remission' in RA?"
+    },
+    {
+      "id": "RA005",
+      "category": "Rheumatoid Arthritis - Early vs Established Disease",
+      "difficulty": "medium",
+      "question": "Why is early RA more likely to reach sustained remission than established RA, and what is the practical 'window of opportunity' concept for patients trying to avoid long-term biologic dependence?"
+    },
+    {
+      "id": "RA006",
+      "category": "Rheumatoid Arthritis - Escalation Strategy",
+      "difficulty": "hard",
+      "question": "If RA disease activity remains moderate after 3 months of optimized first-line therapy, what escalation options are evidence-based (csDMARD combination vs biologic vs JAK inhibitor) and what factors should drive selection?"
+    },
+    {
+      "id": "RA007",
+      "category": "Rheumatoid Arthritis - Glucocorticoid Minimization",
+      "difficulty": "hard",
+      "question": "What is the role of short-term glucocorticoids as a bridge to remission in RA, and what monitoring/exit criteria reduce long-term steroid harm?"
+    },
+    {
+      "id": "RA008",
+      "category": "Rheumatoid Arthritis - Tapering / De-escalation",
+      "difficulty": "very_hard",
+      "question": "A patient is in sustained RA remission for 12 months. What is an evidence-based approach to tapering therapy (which drug first, pace, and relapse monitoring) to preserve remission?"
+    },
+    {
+      "id": "RA009",
+      "category": "Rheumatoid Arthritis - Serology and Prognosis",
+      "difficulty": "hard",
+      "question": "How do RF and anti-CCP status influence the probability of drug-free remission, and how should patients interpret persistent seropositivity despite clinical remission?"
+    },
+    {
+      "id": "RA010",
+      "category": "Rheumatoid Arthritis - Comorbidities and Remission",
+      "difficulty": "hard",
+      "question": "How do comorbidities (cardiovascular risk, chronic infection risk, liver disease, pregnancy planning) change the safest path to RA remission?"
+    },
+    {
+      "id": "RA011",
+      "category": "Rheumatoid Arthritis - Patient Global Assessment",
+      "difficulty": "medium",
+      "question": "Why does patient global assessment often prevent Boolean remission in RA, and how can clinicians distinguish residual inflammation from pain syndromes while still aiming for remission?"
+    },
+    {
+      "id": "RA012",
+      "category": "Rheumatoid Arthritis - Imaging in Remission",
+      "difficulty": "hard",
+      "question": "In RA, when should ultrasound power Doppler or MRI be used to confirm remission or guide tapering, and what findings predict flare after dose reduction?"
+    },
+    {
+      "id": "RA013",
+      "category": "Rheumatoid Arthritis - Vaccination / Prevention",
+      "difficulty": "medium",
+      "question": "For a patient trying to reach remission using immunosuppressive therapy, what preventive care (vaccines, TB/hepatitis screening) reduces treatment interruptions and infection-related setbacks?"
+    },
+    {
+      "id": "RA014",
+      "category": "Rheumatoid Arthritis - Safety vs Efficacy",
+      "difficulty": "hard",
+      "question": "How should patients balance the goal of remission against infection and malignancy risks when choosing between biologics and JAK inhibitors?"
+    },
+    {
+      "id": "RA015",
+      "category": "Rheumatoid Arthritis - Remission Metrics",
+      "difficulty": "medium",
+      "question": "Compare DAS28 remission with ACR/EULAR Boolean remission. Why can DAS28 classify some patients as in remission despite residual swollen joints?"
+    },
+    {
+      "id": "RA016",
+      "category": "Rheumatoid Arthritis - Flare Prevention",
+      "difficulty": "hard",
+      "question": "What are the most common causes of RA flare after reaching remission (nonadherence, tapering too fast, infections), and what early warning signs should patients track?"
+    },
+    {
+      "id": "RA017",
+      "category": "Rheumatoid Arthritis - Lifestyle Adjuncts",
+      "difficulty": "medium",
+      "question": "Which lifestyle factors have the strongest evidence for improving the chance of RA remission (smoking cessation, weight loss, exercise), and what should not be overstated?"
+    },
+    {
+      "id": "RA018",
+      "category": "Rheumatoid Arthritis - Treat-to-Target Communication",
+      "difficulty": "medium",
+      "question": "How should a patient and rheumatologist set an explicit remission target and 'decision rule' for escalation, so therapy changes happen on time instead of drifting?"
+    },
+    {
+      "id": "RA019",
+      "category": "Rheumatoid Arthritis - Pregnancy and Remission",
+      "difficulty": "hard",
+      "question": "How should remission planning change for RA patients who are pregnant or planning pregnancy, including medication compatibility and postpartum flare prevention?"
+    },
+    {
+      "id": "RA020",
+      "category": "Rheumatoid Arthritis - Realistic Expectations",
+      "difficulty": "medium",
+      "question": "What is a realistic timeline for symptom improvement vs true remission in RA, and what should a patient do if they are not improving by 8–12 weeks?"
+    },
+
+    {
+      "id": "IBD001",
+      "category": "IBD (Crohn/UC) - Treat-to-Target (STRIDE-II)",
+      "difficulty": "medium",
+      "question": "What does treat-to-target mean in IBD (Crohn’s disease and ulcerative colitis), and what are STRIDE-II targets along the timeline from induction to maintenance?"
+    },
+    {
+      "id": "IBD002",
+      "category": "IBD (Crohn/UC) - Remission Definitions",
+      "difficulty": "medium",
+      "question": "Define clinical remission, biochemical remission, endoscopic remission, and 'deep remission' in IBD. Why does symptom control alone often fail to predict true remission?"
+    },
+    {
+      "id": "IBD003",
+      "category": "IBD (Crohn/UC) - Biomarkers (Fecal Calprotectin)",
+      "difficulty": "hard",
+      "question": "How should fecal calprotectin be used to guide therapy adjustments toward remission, and what ranges typically indicate low vs high risk of active mucosal inflammation?"
+    },
+    {
+      "id": "IBD004",
+      "category": "IBD (Crohn/UC) - CRP Limitations",
+      "difficulty": "medium",
+      "question": "Why can CRP be normal in active IBD, and how should patients interpret discordant CRP vs symptoms vs calprotectin when aiming for remission?"
+    },
+    {
+      "id": "IBD005",
+      "category": "Crohn’s Disease - Early Biologic Strategy",
+      "difficulty": "hard",
+      "question": "For Crohn’s disease, when is an early biologic (top-down) approach most likely to improve remission rates compared with step-up therapy?"
+    },
+    {
+      "id": "IBD006",
+      "category": "Ulcerative Colitis - Treat-to-Target",
+      "difficulty": "hard",
+      "question": "In ulcerative colitis, what objective targets define mucosal healing and remission, and how should therapy be adjusted if symptoms improve but inflammation persists?"
+    },
+    {
+      "id": "IBD007",
+      "category": "IBD (Crohn/UC) - Therapeutic Drug Monitoring (TDM)",
+      "difficulty": "very_hard",
+      "question": "Explain therapeutic drug monitoring for anti-TNF therapy in IBD: how trough levels and anti-drug antibodies guide decisions to optimize therapy and reach remission."
+    },
+    {
+      "id": "IBD008",
+      "category": "IBD (Crohn/UC) - Combination Therapy",
+      "difficulty": "hard",
+      "question": "What is the rationale for combination therapy (biologic + immunomodulator) in IBD for achieving remission, and what trade-offs affect who benefits most?"
+    },
+    {
+      "id": "IBD009",
+      "category": "Crohn’s Disease - Perianal Disease",
+      "difficulty": "very_hard",
+      "question": "For Crohn’s disease with perianal fistulas, what constitutes remission, and why is combined medical + surgical management often required?"
+    },
+    {
+      "id": "IBD010",
+      "category": "IBD (Crohn/UC) - Steroid-Free Remission",
+      "difficulty": "hard",
+      "question": "Why is steroid-free remission a key goal in IBD, and what steps help patients avoid repeated steroid courses while maintaining control of inflammation?"
+    },
+    {
+      "id": "IBD011",
+      "category": "Crohn’s Disease - Stricturing vs Inflammatory",
+      "difficulty": "hard",
+      "question": "How does stricturing Crohn’s disease change the remission strategy compared with purely inflammatory disease, and why can symptoms persist even after inflammation improves?"
+    },
+    {
+      "id": "IBD012",
+      "category": "IBD (Crohn/UC) - Postoperative Recurrence Prevention",
+      "difficulty": "very_hard",
+      "question": "After ileocolic resection for Crohn’s disease, what is the strategy to prevent recurrence and achieve sustained remission, and what objective monitoring is recommended?"
+    },
+    {
+      "id": "IBD013",
+      "category": "IBD (Crohn/UC) - Endoscopy Timing",
+      "difficulty": "medium",
+      "question": "When should patients undergo colonoscopy or imaging to confirm remission after starting a new IBD therapy, and why is timing important?"
+    },
+    {
+      "id": "IBD014",
+      "category": "IBD (Crohn/UC) - Treat-to-Target Escalation",
+      "difficulty": "hard",
+      "question": "If symptoms partially improve but calprotectin remains elevated after induction therapy, what is a structured escalation pathway to improve the probability of remission?"
+    },
+    {
+      "id": "IBD015",
+      "category": "IBD (Crohn/UC) - Choosing First Biologic",
+      "difficulty": "very_hard",
+      "question": "What patient factors and disease phenotype features help select an initial biologic class in IBD to maximize remission likelihood (e.g., rapid control needs, perianal disease, extraintestinal manifestations)?"
+    },
+    {
+      "id": "IBD016",
+      "category": "IBD (Crohn/UC) - Extraintestinal Manifestations",
+      "difficulty": "hard",
+      "question": "How do extraintestinal manifestations (arthritis, uveitis, skin disease) influence the best path to IBD remission, and why might a gut-selective agent be insufficient for some patients?"
+    },
+    {
+      "id": "IBD017",
+      "category": "IBD (Crohn/UC) - Infection Risk Management",
+      "difficulty": "medium",
+      "question": "What preventive measures (vaccines, TB/hepatitis screening) reduce infection interruptions and help patients stay on track toward IBD remission?"
+    },
+    {
+      "id": "IBD018",
+      "category": "IBD (Crohn/UC) - Cancer Surveillance",
+      "difficulty": "medium",
+      "question": "How does long-standing colitis change colorectal cancer surveillance, and why does sustained mucosal healing matter for long-term outcomes beyond symptom remission?"
+    },
+    {
+      "id": "IBD019",
+      "category": "IBD (Crohn/UC) - Nutrition and Remission",
+      "difficulty": "medium",
+      "question": "What is the evidence-based role of diet and enteral nutrition in achieving or supporting remission in IBD, and what claims should patients be cautious about?"
+    },
+    {
+      "id": "IBD020",
+      "category": "IBD (Crohn/UC) - Microbiome",
+      "difficulty": "hard",
+      "question": "How does the gut microbiome relate to IBD remission and relapse risk, and what interventions have the strongest clinical evidence today?"
+    },
+    {
+      "id": "IBD021",
+      "category": "Ulcerative Colitis - Histologic Remission",
+      "difficulty": "hard",
+      "question": "What is histologic remission in ulcerative colitis, and how does it differ from endoscopic remission when predicting relapse?"
+    },
+    {
+      "id": "IBD022",
+      "category": "IBD (Crohn/UC) - Patient-Reported Outcomes",
+      "difficulty": "medium",
+      "question": "Which patient-reported outcomes are most useful for tracking progress toward remission in IBD without confusing inflammation control with IBS-like symptoms?"
+    },
+    {
+      "id": "IBD023",
+      "category": "IBD (Crohn/UC) - De-escalation",
+      "difficulty": "very_hard",
+      "question": "A patient has been in deep remission for 18 months. What is a cautious, evidence-based approach to de-escalation (stop immunomodulator vs extend biologic interval), and how should relapse be monitored?"
+    },
+    {
+      "id": "IBD024",
+      "category": "IBD (Crohn/UC) - Flare Early Detection",
+      "difficulty": "medium",
+      "question": "What early warning signals (symptoms, calprotectin trend, CRP trend) best predict relapse in IBD, and what action plan helps prevent a full flare?"
+    },
+    {
+      "id": "IBD025",
+      "category": "Crohn’s Disease - Small Bowel Monitoring",
+      "difficulty": "hard",
+      "question": "In small bowel Crohn’s disease, what tests are best to confirm remission (MRE, ultrasound, capsule), and how should objective healing be tracked over time?"
+    },
+    {
+      "id": "IBD026",
+      "category": "IBD (Crohn/UC) - Pregnancy and Remission",
+      "difficulty": "hard",
+      "question": "How should remission planning change for IBD patients who are pregnant or planning pregnancy, including medication continuation and minimizing flare risk?"
+    },
+    {
+      "id": "IBD027",
+      "category": "IBD (Crohn/UC) - Adherence",
+      "difficulty": "medium",
+      "question": "How does nonadherence affect remission and antibody formation in biologic-treated IBD, and what practical strategies improve adherence?"
+    },
+    {
+      "id": "IBD028",
+      "category": "IBD (Crohn/UC) - Smoking",
+      "difficulty": "medium",
+      "question": "How does smoking affect remission probability differently in Crohn’s disease vs ulcerative colitis, and what counseling should patients receive?"
+    },
+    {
+      "id": "IBD029",
+      "category": "IBD (Crohn/UC) - Rapid Control",
+      "difficulty": "hard",
+      "question": "If a patient has severe IBD needing rapid disease control, what therapy attributes matter most for reaching remission quickly, and how should response be assessed early?"
+    },
+    {
+      "id": "IBD030",
+      "category": "IBD (Crohn/UC) - Shared Decision-Making",
+      "difficulty": "medium",
+      "question": "How should patients weigh remission probability vs safety (infection, malignancy, pregnancy, comorbidities) when choosing among biologic classes for IBD?"
+    },
+
+    {
+      "id": "SLE001",
+      "category": "Systemic Lupus Erythematosus - Remission Targets",
+      "difficulty": "medium",
+      "question": "What is DORIS remission in SLE, and how does it compare to LLDAS as a practical treat-to-target goal for patients aiming for long-term remission?"
+    },
+    {
+      "id": "SLE002",
+      "category": "SLE - Steroid Minimization",
+      "difficulty": "hard",
+      "question": "Why is minimizing glucocorticoids central to achieving durable remission in SLE, and what concrete milestones indicate it is safe to taper?"
+    },
+    {
+      "id": "SLE003",
+      "category": "SLE - Hydroxychloroquine Foundation",
+      "difficulty": "medium",
+      "question": "What role does hydroxychloroquine play in preventing flares and supporting remission in SLE, and what monitoring reduces long-term toxicity risk?"
+    },
+    {
+      "id": "SLE004",
+      "category": "SLE - Biomarkers and Remission",
+      "difficulty": "hard",
+      "question": "How should anti-dsDNA and complement (C3/C4) trends be interpreted during clinical remission, and when do serology changes warrant action?"
+    },
+    {
+      "id": "SLE005",
+      "category": "SLE - Flare Prevention",
+      "difficulty": "hard",
+      "question": "What are the most common drivers of SLE flare after reaching low disease activity (infection, medication interruption, UV exposure), and what prevention plan improves sustained remission?"
+    },
+    {
+      "id": "SLE006",
+      "category": "SLE - Lupus Nephritis Targets",
+      "difficulty": "very_hard",
+      "question": "For lupus nephritis, what objective targets (proteinuria, kidney function, urinary sediment) define response and remission, and what is a reasonable timeline to reach them?"
+    },
+    {
+      "id": "SLE007",
+      "category": "SLE - Kidney Biopsy Decision",
+      "difficulty": "hard",
+      "question": "When is kidney biopsy recommended in suspected lupus nephritis, and how does biopsy class guide the best path toward remission?"
+    },
+    {
+      "id": "SLE008",
+      "category": "SLE - Antiphospholipid Syndrome (APS)",
+      "difficulty": "hard",
+      "question": "How does antiphospholipid syndrome alter remission planning in SLE, and what monitoring reduces thrombosis and pregnancy loss risk?"
+    },
+    {
+      "id": "SLE009",
+      "category": "SLE - Biologics and Remission",
+      "difficulty": "hard",
+      "question": "What is the role of biologics (e.g., BAFF/BLyS or type I interferon pathway agents) in helping patients reach LLDAS or remission, and which patients tend to benefit most?"
+    },
+    {
+      "id": "SLE010",
+      "category": "SLE - Treat-to-Target Monitoring",
+      "difficulty": "medium",
+      "question": "What should be monitored at routine SLE follow-ups to keep patients on track toward remission (symptoms, organ-specific measures, labs), and how often should monitoring occur during changes?"
+    },
+    {
+      "id": "SLE011",
+      "category": "SLE - Musculoskeletal Disease",
+      "difficulty": "medium",
+      "question": "For SLE with persistent inflammatory arthritis despite basic therapy, what escalation pathways improve the odds of remission while limiting steroid exposure?"
+    },
+    {
+      "id": "SLE012",
+      "category": "SLE - Cutaneous Disease",
+      "difficulty": "medium",
+      "question": "How should cutaneous lupus be managed to minimize flares and support overall remission goals, and what triggers should patients address?"
+    },
+    {
+      "id": "SLE013",
+      "category": "SLE - Fatigue and Quality of Life",
+      "difficulty": "hard",
+      "question": "Why can fatigue persist even in SLE remission, and how should patients separate inflammatory activity from comorbid contributors (sleep, anemia, thyroid disease, depression) without missing relapse?"
+    },
+    {
+      "id": "SLE014",
+      "category": "SLE - Vaccines and Infection Risk",
+      "difficulty": "medium",
+      "question": "What preventive care reduces infection-related setbacks to SLE remission (vaccines, screening), especially for patients on immunosuppressants?"
+    },
+    {
+      "id": "SLE015",
+      "category": "SLE - Pregnancy and Remission",
+      "difficulty": "hard",
+      "question": "How should remission planning change for SLE patients who are pregnant or planning pregnancy, including timing relative to disease control and key labs to optimize outcomes?"
+    },
+    {
+      "id": "SLE016",
+      "category": "SLE - Neuropsychiatric Symptoms",
+      "difficulty": "very_hard",
+      "question": "How should clinicians and patients evaluate neuropsychiatric symptoms in SLE when trying to define remission, and what red flags require urgent assessment?"
+    },
+    {
+      "id": "SLE017",
+      "category": "SLE - Shared Decision-Making",
+      "difficulty": "medium",
+      "question": "How should patients weigh remission probability vs long-term medication risks in SLE, and what questions should be asked before escalating immunosuppression?"
+    },
+    {
+      "id": "SLE018",
+      "category": "SLE - Lab Interpretation",
+      "difficulty": "hard",
+      "question": "During low disease activity, what lab patterns should raise concern for impending flare (falling complement, rising anti-dsDNA, new cytopenias), and what confirmatory tests help?"
+    },
+    {
+      "id": "SLE019",
+      "category": "SLE - Tapering / De-escalation",
+      "difficulty": "very_hard",
+      "question": "A patient has maintained LLDAS for 2 years. What is an evidence-based approach to de-escalation (steroid taper, immunosuppressant reduction), and what monitoring prevents silent organ relapse?"
+    },
+    {
+      "id": "SLE020",
+      "category": "SLE - Realistic Timelines",
+      "difficulty": "medium",
+      "question": "What is a realistic timeline to reach LLDAS or remission in SLE after initiating a new therapy, and what should patients do if there is no objective improvement by 8–12 weeks?"
+    },
+
+    {
+      "id": "SJS001",
+      "category": "Sjogren’s - Goals and Measurement (ESSDAI/ESSPRI)",
+      "difficulty": "medium",
+      "question": "In Sjogren’s disease, what does 'remission' realistically mean, and how are systemic activity and symptom burden measured with ESSDAI and ESSPRI?"
+    },
+    {
+      "id": "SJS002",
+      "category": "Sjogren’s - Sicca Symptom Control",
+      "difficulty": "medium",
+      "question": "What evidence-based steps best control dry eye and dry mouth symptoms in Sjogren’s, and what outcomes should patients track to judge response?"
+    },
+    {
+      "id": "SJS003",
+      "category": "Sjogren’s - Systemic Disease Treatment",
+      "difficulty": "hard",
+      "question": "When Sjogren’s has systemic organ involvement, what is the escalation pathway (glucocorticoids, immunosuppressants, biologics) and what monitoring supports sustained low disease activity?"
+    },
+    {
+      "id": "SJS004",
+      "category": "Sjogren’s - Biomarkers and Risk Stratification",
+      "difficulty": "hard",
+      "question": "How do anti-SSA/Ro, anti-SSB/La, RF, low complement, and cryoglobulins influence prognosis and remission planning in Sjogren’s?"
+    },
+    {
+      "id": "SJS005",
+      "category": "Sjogren’s - Lymphoma Risk",
+      "difficulty": "hard",
+      "question": "Which features raise the risk of lymphoma in Sjogren’s, and what surveillance approach reduces delayed diagnosis while avoiding unnecessary testing?"
+    },
+    {
+      "id": "SJS006",
+      "category": "Sjogren’s - Fatigue and Pain",
+      "difficulty": "medium",
+      "question": "Why can fatigue and pain persist despite low systemic activity in Sjogren’s, and how should patients approach remission goals without over-treating with immunosuppression?"
+    },
+    {
+      "id": "SJS007",
+      "category": "Sjogren’s - Neurologic/Respiratory Involvement",
+      "difficulty": "very_hard",
+      "question": "How are interstitial lung disease and neuropathy managed in Sjogren’s, and what objective markers define response and stable remission-like control?"
+    },
+    {
+      "id": "SJS008",
+      "category": "Sjogren’s - Pregnancy (anti-SSA/SSB)",
+      "difficulty": "hard",
+      "question": "How should remission planning and monitoring change for Sjogren’s patients who are pregnant or planning pregnancy, especially if anti-SSA/SSB positive?"
+    },
+    {
+      "id": "SJS009",
+      "category": "Sjogren’s - Shared Decision-Making",
+      "difficulty": "medium",
+      "question": "How should patients weigh symptom control versus systemic immunosuppression risks in Sjogren’s when aiming for long-term stable disease?"
+    },
+    {
+      "id": "SJS010",
+      "category": "Sjogren’s - Practical Monitoring Plan",
+      "difficulty": "medium",
+      "question": "What is a practical monitoring plan for Sjogren’s focused on maintaining low disease activity (labs, eye/dental care, symptom indices), and how often should it be reassessed?"
+    },
+
+    {
+      "id": "SPA001",
+      "category": "Psoriatic Arthritis - Remission / Minimal Disease Activity",
+      "difficulty": "medium",
+      "question": "What does remission or minimal disease activity mean in psoriatic arthritis, and which domains must be controlled to achieve meaningful remission (joints, enthesitis, skin, function)?"
+    },
+    {
+      "id": "SPA002",
+      "category": "Psoriatic Arthritis - Treat-to-Target",
+      "difficulty": "hard",
+      "question": "How does treat-to-target work in psoriatic arthritis, and what escalation timeline improves the chance of achieving minimal disease activity?"
+    },
+    {
+      "id": "SPA003",
+      "category": "Axial Spondyloarthritis - Remission Targets",
+      "difficulty": "hard",
+      "question": "What are practical objective targets for axial spondyloarthritis remission/low activity (e.g., ASDAS), and why do imaging changes lag behind symptom improvement?"
+    },
+    {
+      "id": "SPA004",
+      "category": "Spondyloarthritis - Choosing Biologic Class",
+      "difficulty": "very_hard",
+      "question": "How should patients choose between TNF inhibitors and IL-17/IL-23 pathway agents to maximize remission likelihood when they have overlapping features (axial symptoms, psoriasis, IBD risk)?"
+    },
+    {
+      "id": "SPA005",
+      "category": "Spondyloarthritis - NSAIDs vs Biologics",
+      "difficulty": "medium",
+      "question": "What is the role of NSAIDs in achieving remission-like control in axial disease, and when should failure to reach targets prompt a move to biologic therapy?"
+    },
+    {
+      "id": "SPA006",
+      "category": "Spondyloarthritis - Comorbidities",
+      "difficulty": "hard",
+      "question": "How do comorbidities (IBD, uveitis history, cardiovascular risk) change the safest path toward remission in spondyloarthritis?"
+    },
+    {
+      "id": "SPA007",
+      "category": "Spondyloarthritis - Tapering",
+      "difficulty": "very_hard",
+      "question": "After 12–18 months of stable low activity in spondyloarthritis, what is a cautious tapering approach and what monitoring predicts relapse early?"
+    },
+    {
+      "id": "SPA008",
+      "category": "Psoriatic Arthritis - Biomarkers and Monitoring",
+      "difficulty": "hard",
+      "question": "Why are biomarkers less reliable in psoriatic arthritis than RA, and how should patients track remission using clinical domain-based measures?"
+    },
+    {
+      "id": "SPA009",
+      "category": "Spondyloarthritis - Physical Therapy",
+      "difficulty": "medium",
+      "question": "What is the role of exercise and physical therapy in sustaining remission/low activity in axial disease, and what outcomes should patients track?"
+    },
+    {
+      "id": "SPA010",
+      "category": "Spondyloarthritis - Shared Decision-Making",
+      "difficulty": "medium",
+      "question": "How should patients weigh remission probability versus safety when choosing long-term biologic therapy in spondyloarthritis?"
+    },
+
+    {
+      "id": "AAV001",
+      "category": "ANCA-Associated Vasculitis - Remission Induction",
+      "difficulty": "hard",
+      "question": "In ANCA-associated vasculitis, what does remission induction mean, and what combination strategies are used to rapidly control organ-threatening disease while limiting steroid exposure?"
+    },
+    {
+      "id": "AAV002",
+      "category": "ANCA-Associated Vasculitis - Remission Maintenance",
+      "difficulty": "hard",
+      "question": "After remission is achieved in ANCA-associated vasculitis, what maintenance strategies reduce relapse risk, and what factors guide duration of maintenance?"
+    },
+    {
+      "id": "AAV003",
+      "category": "ANCA-Associated Vasculitis - Monitoring (BVAS/ANCA)",
+      "difficulty": "very_hard",
+      "question": "How should disease activity be monitored in ANCA-associated vasculitis (symptoms, labs, BVAS), and why are ANCA titers alone insufficient to define remission or relapse?"
+    },
+    {
+      "id": "AAV004",
+      "category": "ANCA-Associated Vasculitis - Kidney Disease",
+      "difficulty": "very_hard",
+      "question": "For vasculitis with glomerulonephritis, what objective targets define renal response, and what monitoring distinguishes active inflammation from chronic damage during 'remission'?"
+    },
+    {
+      "id": "AAV005",
+      "category": "ANCA-Associated Vasculitis - Steroid Tapering",
+      "difficulty": "hard",
+      "question": "What principles guide glucocorticoid tapering in ANCA-associated vasculitis to reduce toxicity while preventing early relapse?"
+    },
+    {
+      "id": "AAV006",
+      "category": "ANCA-Associated Vasculitis - Infection Prevention",
+      "difficulty": "medium",
+      "question": "What infection-prevention steps (vaccines, prophylaxis, screening) help patients stay in remission during vasculitis immunosuppression?"
+    },
+    {
+      "id": "AAV007",
+      "category": "ANCA-Associated Vasculitis - Relapse Management",
+      "difficulty": "very_hard",
+      "question": "If a patient relapses after achieving remission, what factors help distinguish major versus minor relapse, and how should therapy be adjusted to re-induce remission?"
+    },
+    {
+      "id": "AAV008",
+      "category": "ANCA-Associated Vasculitis - Patient Education",
+      "difficulty": "medium",
+      "question": "What symptoms should patients monitor as early warning signs of relapse in vasculitis, and what action plan reduces delays in care?"
+    },
+    {
+      "id": "AAV009",
+      "category": "ANCA-Associated Vasculitis - Shared Decision-Making",
+      "difficulty": "medium",
+      "question": "How should patients weigh relapse risk versus long-term immunosuppression toxicity when aiming for durable vasculitis remission?"
+    },
+    {
+      "id": "AAV010",
+      "category": "ANCA-Associated Vasculitis - Realistic Timelines",
+      "difficulty": "medium",
+      "question": "What is a realistic timeline for induction response and remission in ANCA-associated vasculitis, and what should trigger a re-evaluation if targets are not met?"
+    }
+  ],
+  "ground_truth": {
+    "RA001": "RA remission is best defined using stringent composite measures. ACR/EULAR Boolean remission (2022 revision) requires very low tender and swollen joint counts plus low CRP and low patient global assessment (PtGA threshold increased to 2/10 in Boolean 2.0). SDAI remission is an index-based threshold (SDAI ≤3.3) that correlates with good functional and radiographic outcomes. In practice, Boolean remission is stricter and can be limited by PtGA/pain even when inflammation is controlled; SDAI is often more attainable while still clinically meaningful.",
+    "RA002": "Treat-to-target in RA means selecting a validated activity measure (e.g., SDAI/CDAI, Boolean remission, DAS28 with caution) and adjusting therapy on a predefined schedule until the target is reached. Reassess frequently early (often every 4–12 weeks) and escalate if there is not clear improvement by ~3 months or target not achieved by ~6 months. Use objective inflammatory markers (swollen joints, CRP/ESR) and patient function, and document a concrete escalation plan to avoid therapeutic delay.",
+    "RA003": "Poor prognostic features for RA remission include high anti-CCP/RF titers, high baseline disease activity, early erosions, smoking, obesity, and significant functional limitation. These factors suggest higher relapse and damage risk, so initial therapy often needs to be more intensive and monitoring more frequent. The patient-facing takeaway is that earlier, objective control of inflammation (treat-to-target) is more important than waiting for spontaneous improvement when risk markers are high.",
+    "RA004": "RA 'true remission' requires absence of active synovitis, not just symptom improvement. CRP/ESR can help but may be normal in some patients; imaging (ultrasound power Doppler or MRI) can detect residual inflammation predicting flare or progression. Patient-reported outcomes capture pain/fatigue but can reflect non-inflammatory pain; combining swollen joint counts, biomarkers, and selective imaging reduces false reassurance and guides safe tapering.",
+    "RA005": "Early RA has a higher chance of sustained remission because inflammatory pathways and synovial remodeling are less entrenched ('window of opportunity'). Starting disease-modifying therapy early and using treat-to-target reduces erosions and improves the probability of long-term low activity with fewer medications. Patients aiming to avoid long-term escalation benefit most from early objective control rather than prolonged trial-and-error.",
+    "RA006": "If moderate activity persists after ~3 months of optimized first-line therapy, evidence-based options include csDMARD combination therapy or adding/switching to a biologic or targeted synthetic DMARD, depending on severity, prognostic markers, and comorbidity risks. Selection should consider infection risk, cardiovascular risk, pregnancy planning, hepatic/renal issues, and patient preference; the key is timely escalation until the remission/low-activity target is met.",
+    "RA007": "Short-term glucocorticoids can reduce symptoms quickly as a bridge while DMARDs take effect, but long-term steroids increase infection, osteoporosis, diabetes, and cardiovascular risk. A safer remission pathway uses explicit taper milestones (e.g., symptom and swollen-joint improvement plus improving CRP) and a clear exit plan, aiming to minimize cumulative exposure and avoid repeated courses.",
+    "RA008": "Tapering in sustained RA remission is typically gradual, with shared decision-making and close monitoring for flare. Common approaches reduce steroids first (if any), then consider lowering or spacing biologic/targeted therapy or reducing csDMARDs depending on relapse risk. Use objective monitoring (joint exam, activity indices, CRP/ESR; imaging in selected patients) and define relapse thresholds that trigger prompt return to the prior effective dose.",
+    "RA009": "Seropositive RA (RF/anti-CCP positive) is associated with more persistent disease and lower probability of drug-free remission compared with seronegative disease. Persistent antibody positivity can remain despite clinical remission; the key is controlling inflammation and preventing damage. Patients should interpret serology as a risk marker, not a day-to-day activity measure.",
+    "RA010": "Comorbidities influence the safest route to remission. Infection risks require screening (TB/hepatitis) and vaccination planning; liver disease affects csDMARD choices; pregnancy planning affects medication selection and timing; cardiovascular risk is a major long-term RA outcome and is improved by inflammation control but can also be affected by specific therapies. A remission plan should integrate these constraints so therapy is effective without avoidable harms.",
+    "RA011": "PtGA often reflects pain, fatigue, sleep, mood, and fibromyalgia-like symptoms in addition to inflammation, so it can block Boolean remission even when swollen joints and CRP are controlled. Clinically, distinguishing inflammatory activity from centralized pain requires careful joint exam, trend metrics, and sometimes imaging. Remission goals should still prioritize objective inflammation control while treating non-inflammatory pain drivers in parallel.",
+    "RA012": "Ultrasound power Doppler or MRI can identify subclinical synovitis in apparent clinical remission, which predicts flare and damage progression. Imaging is most helpful when considering tapering in high-risk patients or when symptoms and labs disagree. Persistent Doppler signal or MRI synovitis suggests caution with dose reduction and closer follow-up.",
+    "RA013": "Preventive care supports uninterrupted remission-focused therapy. Screen for TB and hepatitis B before many biologics; update vaccines (inactivated vaccines preferred during immunosuppression; avoid live vaccines when significantly immunosuppressed). This reduces treatment pauses from infections and supports long-term disease control.",
+    "RA014": "Biologics and JAK inhibitors can improve remission rates but carry risks that vary by patient (serious infection, thrombosis/MACE warnings for some JAK inhibitors, malignancy considerations). The safest decision balances baseline risk factors, prior infection history, age, smoking status, and comorbidities, and uses risk mitigation (screening, vaccination, monitoring) rather than maximizing potency without context.",
+    "RA015": "DAS28 remission (often <2.6) can classify some patients as in remission despite residual swollen joints because of how it weights components and joint counts. ACR/EULAR Boolean or SDAI remission is more stringent and correlates better with true inflammatory quiescence. For remission-focused care, stricter indices reduce false reassurance and undertreatment.",
+    "RA016": "Common relapse drivers include rapid tapering, missed doses, intercurrent infections, and persistent subclinical synovitis. Early warning signs include increasing morning stiffness, rising swollen joint counts, worsening function, and rising CRP/ESR. A relapse plan with early contact and objective reassessment prevents prolonged uncontrolled inflammation.",
+    "RA017": "Smoking cessation and weight management have the strongest and most consistent evidence among lifestyle factors for improving RA outcomes and medication response. Exercise and physical therapy improve function and pain and can support overall disease control. Lifestyle measures should be framed as adjuncts, not replacements for disease-modifying therapy when inflammation is active.",
+    "RA018": "A treat-to-target agreement is strongest when it specifies (a) the target metric (e.g., SDAI/Boolean remission), (b) the reassessment interval, and (c) the escalation trigger (e.g., inadequate improvement by ~3 months or not at target by ~6 months). This prevents drift and makes the remission pathway transparent for patients.",
+    "RA019": "Pregnancy planning requires medication compatibility and stable disease control before conception. Many patients flare postpartum; planning includes minimizing steroids, maintaining safe background therapy, and ensuring close follow-up during the postpartum window. The remission goal is stable low activity with the safest medication set for pregnancy and breastfeeding constraints.",
+    "RA020": "Symptom improvement may occur within weeks, but achieving and confirming remission usually requires months of treat-to-target adjustment. If there is minimal objective improvement by 8–12 weeks, reassess adherence, diagnosis, comorbid pain drivers, and consider escalation. Delays reduce remission probability and increase damage risk.",
+
+    "IBD001": "Treat-to-target in IBD (STRIDE-II) emphasizes objective endpoints beyond symptoms: clinical remission, normalization/near-normalization of biomarkers (CRP and fecal calprotectin), and endoscopic healing as key medium/long-term targets. Induction aims for symptom improvement quickly; maintenance aims for sustained biomarker control and mucosal healing to reduce relapse, hospitalization, and surgery risk.",
+    "IBD002": "Clinical remission is symptom-based; biochemical remission reflects normalized inflammatory markers; endoscopic remission reflects mucosal healing; deep remission combines clinical + objective healing (often endoscopic and biomarker targets). Symptoms can persist from IBS-like overlap, bile acid diarrhea, strictures, or infection even when inflammation is controlled, so symptoms alone are an unreliable remission proxy.",
+    "IBD003": "Fecal calprotectin is a sensitive marker of intestinal inflammation and is useful for tight control strategies. Lower values generally correlate with mucosal healing; persistent elevation suggests ongoing inflammation and higher relapse risk even if symptoms improve. The key use is trending over time and acting on sustained elevation (confirm inflammation and optimize therapy) rather than reacting to a single value in isolation.",
+    "IBD004": "CRP is an imperfect marker: some patients are 'CRP non-responders' despite active intestinal inflammation. Discordant markers require triangulation with calprotectin and objective assessment (endoscopy or imaging). Remission planning should prioritize mucosal healing and fecal biomarkers when CRP is unreliable.",
+    "IBD005": "Early biologic strategies are most beneficial in high-risk Crohn’s disease: young age at onset, extensive disease, deep ulcers, perianal fistulas, stricturing/penetrating phenotype, high inflammatory burden, or early steroid dependence. The goal is to prevent structural damage and improve the probability of sustained remission and reduced surgery risk.",
+    "IBD006": "UC remission targets include symptom control plus endoscopic healing; persistent endoscopic inflammation predicts relapse and cancer risk. If symptoms improve but inflammation persists, treat-to-target recommends optimizing therapy (dose, adherence, mechanism switch if needed) rather than stopping early, because true remission is objective healing, not only symptom improvement.",
+    "IBD007": "TDM helps distinguish pharmacokinetic failure (low drug level) from mechanistic failure (adequate level but no response) and guides whether to increase dose/shorten interval, add an immunomodulator, or switch class. Anti-drug antibodies can cause loss of response and are mitigated by consistent dosing and, in selected cases, combination therapy. This improves the chance of maintaining remission once achieved.",
+    "IBD008": "Combination therapy can increase drug exposure, reduce immunogenicity, and improve durability of response for some biologics, increasing remission probability in selected patients. Trade-offs include higher infection and malignancy risks, so the decision depends on patient age, prior infection history, cancer risk factors, and the biologic’s immunogenicity profile.",
+    "IBD009": "Perianal Crohn’s remission requires closure of fistula drainage and control of pelvic sepsis, often needing both biologic therapy and surgical management (seton/drainage). Imaging and exam guide response; incomplete drainage can prevent remission despite systemic therapy. Tight coordination improves durable fistula healing rates.",
+    "IBD010": "Steroid-free remission is a key goal because steroids do not maintain mucosal healing and cause major long-term toxicity. Achieving remission requires effective maintenance therapy and objective monitoring so inflammation is controlled without repeated steroid rescue.",
+    "IBD011": "In stricturing Crohn’s, symptoms may reflect fixed narrowing and motility issues even if inflammation is controlled; remission for inflammation does not always resolve obstruction. Management balances anti-inflammatory therapy for active disease with endoscopic dilation or surgery when fibrosis dominates.",
+    "IBD012": "Postoperative recurrence is common in Crohn’s, so remission strategy includes risk stratification, early prophylactic therapy in high-risk patients, and objective monitoring (often early ileocolonoscopy and/or biomarkers like calprotectin). Acting on early endoscopic recurrence improves long-term remission durability.",
+    "IBD013": "Objective confirmation of remission (endoscopy or imaging, plus biomarkers) is typically done after induction and early maintenance to ensure mucosal healing. Timing matters because acting early on incomplete response improves long-term outcomes, while waiting for symptoms alone can allow silent inflammation and cumulative damage.",
+    "IBD014": "If calprotectin remains elevated after induction, confirm active inflammation and optimize therapy (adherence, dosing, TDM when relevant). If inflammation persists despite adequate exposure, switching mechanism is often needed. A structured escalation plan reduces prolonged partial control and improves remission rates.",
+    "IBD015": "First biologic selection depends on phenotype (perianal disease, small bowel, severe colitis), speed of needed response, prior infections, comorbid psoriasis/arthritis, and pregnancy plans. The remission goal is the best match between mechanism and disease drivers while minimizing interruptions from adverse events.",
+    "IBD016": "Extraintestinal manifestations may require systemic immunomodulation; gut-selective agents may control colitis but not arthritis/uveitis. Remission planning should include both gut targets and extraintestinal disease control to avoid 'partial remission' where inflammation persists outside the bowel.",
+    "IBD017": "Preventive care includes vaccines and screening for TB and hepatitis before immunosuppressive therapy. This reduces serious infections and treatment pauses, helping patients maintain continuous therapy necessary for sustained remission.",
+    "IBD018": "Long-standing colitis increases colorectal cancer risk; surveillance colonoscopy is guided by duration, extent, and risk factors. Sustained mucosal healing reduces inflammation-driven risk and improves long-term outcomes, making remission relevant beyond symptom relief.",
+    "IBD019": "Diet can support symptom control and, in selected settings (especially pediatric Crohn’s), exclusive enteral nutrition can induce remission. However, many dietary claims overpromise; patients should prioritize evidence-based approaches and objective monitoring to ensure inflammation control.",
+    "IBD020": "Microbiome changes correlate with IBD activity, but many interventions remain investigational. Strong evidence exists for fecal microbiota transplant in recurrent C. difficile, and more limited/selected evidence in UC depending on protocols. Remission-focused care should treat microbiome strategies as adjuncts unless supported by clear clinical evidence for the patient’s scenario.",
+    "IBD021": "Histologic remission in UC refers to microscopic healing and may predict lower relapse risk than endoscopic appearance alone. It is not always required for clinical decision-making but can refine prognosis when available; endoscopic healing remains a primary objective target.",
+    "IBD022": "Useful PROs include stool frequency, bleeding, urgency, nocturnal symptoms, and fatigue, tracked alongside objective markers. Persistent symptoms with normal biomarkers suggests functional overlap or complications rather than active inflammation, preventing unnecessary escalation while still protecting remission targets.",
+    "IBD023": "De-escalation is safest after prolonged deep remission with objective confirmation (low biomarkers and healed mucosa). Common strategies stop the immunomodulator first (in some regimens) or cautiously extend biologic intervals, with close calprotectin monitoring to detect relapse early. Rapid reversal to the prior regimen on worsening biomarkers helps preserve remission.",
+    "IBD024": "Rising calprotectin often precedes symptomatic relapse. A prevention plan uses scheduled biomarker checks and clear thresholds for re-testing, infectious workup, and early therapy optimization, reducing progression to severe flare.",
+    "IBD025": "Small bowel disease often requires imaging (MRE, intestinal ultrasound) to confirm healing because colonoscopy may not reach involved segments. Remission tracking should integrate imaging findings with biomarkers and symptoms to avoid silent progression.",
+    "IBD026": "Best pregnancy outcomes occur when IBD is in stable remission before conception; active disease increases miscarriage and preterm birth risk. Many maintenance therapies are continued to prevent flare; decisions are individualized with obstetric and gastroenterology coordination. The remission plan prioritizes stability and avoids unnecessary medication discontinuation.",
+    "IBD027": "Nonadherence increases relapse risk and promotes antibody formation for some biologics. Practical adherence supports (reminders, simplified schedules, managing side effects, shared decision-making) improve durable remission and reduce loss of response.",
+    "IBD028": "Smoking worsens Crohn’s disease activity and reduces remission probability; cessation improves outcomes. In UC, smoking has complex associations and is not a recommended therapy due to cardiovascular and cancer harms. Counseling should emphasize overall health and disease-specific risks without recommending smoking.",
+    "IBD029": "For severe disease needing rapid control, key attributes include speed of onset, effectiveness in the phenotype, and ability to achieve early biomarker improvement. Early objective assessment (symptom + biomarkers and, when needed, endoscopy/imaging) determines whether to optimize quickly or change therapy.",
+    "IBD030": "Remission choices should consider individual risk: prior serious infections, age, malignancy risk factors, pregnancy plans, and extraintestinal disease. The safest approach aligns mechanism with disease needs and uses prevention strategies (screening, vaccination, monitoring) to sustain therapy.",
+
+    "SLE001": "DORIS remission is a stringent SLE target (clinical SLEDAI-2K = 0 and low physician global assessment, often with allowance for antimalarials and low-dose glucocorticoids). LLDAS is a more attainable low disease activity state and is strongly associated with reduced flares and damage accrual. For many patients, aiming for sustained LLDAS is a practical step toward remission-like long-term outcomes.",
+    "SLE002": "Long-term steroids drive major SLE damage (infection, osteoporosis, cardiovascular disease), so remission strategies prioritize steroid minimization. Safe tapering is supported by objective improvement in organ-specific measures, stable labs, and absence of new symptoms. Clear milestones and close follow-up reduce rebound flares.",
+    "SLE003": "Hydroxychloroquine reduces flare risk and supports long-term disease control; it is a foundational therapy in many SLE patients unless contraindicated. Monitoring includes eye exams (retinopathy risk) and attention to dosing and risk factors. Maintaining HCQ often improves remission durability and reduces steroid need.",
+    "SLE004": "Anti-dsDNA and complement trends can reflect immunologic activity but do not always track perfectly with clinical disease. Rising dsDNA and falling complement during clinical quiescence increases flare risk and should prompt closer monitoring and evaluation for early organ involvement rather than automatic escalation. Decisions should integrate symptoms, urinalysis/proteinuria, and cytopenias.",
+    "SLE005": "Flares are often triggered by infections, medication interruption, UV exposure, and psychosocial stressors. A remission plan includes preventive care (vaccines, infection precautions), adherence support, sun protection, and early evaluation when labs or symptoms change. This reduces severe flares and helps sustain low activity.",
+    "SLE006": "In lupus nephritis, remission/response is defined by improving proteinuria, stable/improving kidney function, and resolution of active urinary sediment. Proteinuria decline is a key measurable target over months; failure to improve on schedule should prompt adherence review, drug exposure assessment, and reconsideration of diagnosis/class or treatment strategy.",
+    "SLE007": "Kidney biopsy is recommended when nephritis is suspected to classify pathology, guide therapy intensity, and determine prognosis. Different classes require different induction/maintenance approaches; without biopsy, treatment may be mismatched, reducing remission probability or increasing toxicity.",
+    "SLE008": "APS changes remission planning because thrombosis risk persists even when lupus inflammation is controlled. Management requires risk stratification, careful monitoring for thrombotic events, and pregnancy planning with appropriate specialist care. Patients should understand that 'remission' includes both inflammation control and thrombosis prevention when APS is present.",
+    "SLE009": "Biologics targeting BAFF/BLyS or type I interferon pathways can reduce flare frequency and help patients reach LLDAS by enabling steroid taper and controlling refractory domains. Best candidates are those with persistent moderate activity despite standard therapy or frequent flares. Therapy choice should consider organ involvement, safety, and patient goals.",
+    "SLE010": "Routine monitoring includes symptoms, exam, CBC, kidney function, urinalysis/proteinuria, complements, anti-dsDNA, and domain-specific measures (e.g., arthritis activity). During therapy changes, monitoring is more frequent; in stability, intervals can be extended. Tight monitoring supports early correction before relapse escalates.",
+    "SLE011": "Persistent inflammatory arthritis in SLE is managed by optimizing foundational therapy and adding steroid-sparing agents when needed. The remission goal is to control synovitis and pain while tapering steroids; monitoring includes objective joint findings and functional outcomes, not pain alone.",
+    "SLE012": "Cutaneous lupus management supports remission by reducing inflammatory burden and preventing flares. Sun protection is essential; therapy aims to control lesions with the least systemic toxicity. Tracking triggers and objective skin activity helps avoid both undertreatment and unnecessary immunosuppression.",
+    "SLE013": "Fatigue can persist from non-inflammatory causes even when SLE is controlled. A remission framework separates immune activity (labs, organ signs) from comorbid contributors (sleep disorders, anemia, thyroid disease, mood) so patients are treated appropriately without escalating immunosuppression inappropriately.",
+    "SLE014": "Vaccination and infection risk mitigation reduce flare and hospitalization risk and avoid interruptions to immunosuppressive regimens. Screening before certain therapies and prompt infection evaluation are part of maintaining remission-focused continuity of care.",
+    "SLE015": "Pregnancy planning in SLE aims for stable low disease activity for several months before conception, with close monitoring of kidney function, antiphospholipid status, complements, and anti-dsDNA. Medication plans prioritize fetal safety while preventing flare, because active disease is the main driver of poor outcomes.",
+    "SLE016": "Neuropsychiatric symptoms in SLE have broad differentials (primary SLE involvement, medication effects, infection, vascular events). Remission assessment requires ruling out urgent causes and using domain-specific evaluation; red flags warrant immediate medical assessment rather than routine adjustment.",
+    "SLE017": "Shared decision-making should clarify the target state (LLDAS/remission), risk tolerance, and how success will be measured. Patients should ask about expected timelines, monitoring, steroid-sparing plans, and safety mitigation. This keeps remission goals realistic and evidence-based.",
+    "SLE018": "Concerning lab trends include falling complement, rising anti-dsDNA, new cytopenias, and new proteinuria/hematuria. Confirmatory evaluation includes repeat labs, urinalysis with quantification, and clinical assessment for new organ involvement. Early detection prevents severe flares and preserves remission.",
+    "SLE019": "De-escalation after prolonged LLDAS prioritizes steroid withdrawal first, then cautious reduction of other immunosuppressants if organ disease is stable. Monitoring must include urinalysis/proteinuria and serologies, because organ relapse can be silent. A rapid return to the prior effective regimen is often needed if objective markers worsen.",
+    "SLE020": "Objective improvement can lag, but lack of meaningful progress by 8–12 weeks should prompt review of diagnosis, adherence, drug exposure, and organ-specific activity measures. Timely reassessment and escalation reduces prolonged steroid exposure and improves the probability of sustained low activity or remission.",
+
+    "SJS001": "Sjogren’s typically aims for sustained low systemic activity and symptom control rather than a single universally accepted remission definition. ESSDAI measures systemic organ activity (low disease activity often <5), while ESSPRI captures patient symptoms (dryness, pain, fatigue). Remission planning uses these tools to avoid overtreating symptoms with immunosuppression when systemic activity is low.",
+    "SJS002": "Evidence-based sicca management includes topical eye therapies, saliva substitutes/stimulants, dental prevention, and addressing contributing medications/dehydration. Response is tracked with symptom scores, ocular tests when available, and dental outcomes. This supports stable long-term control without unnecessary systemic therapy.",
+    "SJS003": "Systemic Sjogren’s requires organ-directed escalation: short-term glucocorticoids for acute control, immunosuppressants for steroid-sparing, and biologics in selected severe cases. Monitoring uses organ-specific labs/imaging plus ESSDAI to maintain low activity over time.",
+    "SJS004": "Autoantibodies and complement patterns help stratify systemic risk. Anti-SSA/SSB support diagnosis; low complement and cryoglobulins can indicate higher systemic and lymphoma risk. Remission-like stability requires tighter monitoring and early evaluation of systemic symptoms in higher-risk profiles.",
+    "SJS005": "Lymphoma risk increases with features like persistent gland enlargement, low complement, cryoglobulinemia, palpable purpura/vasculitis, and systemic activity. Surveillance is symptom- and finding-driven, emphasizing prompt evaluation of red flags rather than indiscriminate imaging. Early recognition improves outcomes.",
+    "SJS006": "Fatigue and pain can persist due to central sensitization, sleep issues, mood, and comorbid fibromyalgia-like syndromes. Remission planning should treat these contributors while reserving immunosuppression for objective systemic activity. This prevents harm from overtreatment.",
+    "SJS007": "ILD and neuropathy in Sjogren’s require specialist evaluation and objective markers (PFTs/HRCT for ILD; neurologic testing for neuropathy). Response is measured by stabilization or improvement in objective function rather than symptom reports alone. Sustained stability is the practical 'remission-like' goal.",
+    "SJS008": "Anti-SSA/SSB positivity affects pregnancy monitoring because of congenital heart block risk; pregnancy planning involves coordinated obstetric and rheumatology care and close fetal monitoring. Remission goals prioritize stable low systemic activity and safe therapy continuity.",
+    "SJS009": "Patients should weigh symptom burden, systemic activity, and therapy risks; shared decision-making clarifies which symptoms reflect systemic inflammation versus chronic symptom syndromes. Long-term stability is achieved by matching treatment intensity to objective disease activity.",
+    "SJS010": "A practical monitoring plan includes symptom indices (ESSPRI), systemic assessment (ESSDAI when systemic disease), periodic labs (CBC, complements when relevant), eye/dental follow-up, and screening for systemic red flags. Reassessment frequency increases with systemic activity or therapy changes.",
+
+    "SPA001": "Psoriatic arthritis remission/minimal disease activity is domain-based: joints, enthesitis, skin, function, and patient pain all matter. Minimal disease activity criteria emphasize controlling multiple domains to prevent structural damage and preserve function. Remission planning should ensure no single uncontrolled domain is overlooked.",
+    "SPA002": "Treat-to-target in PsA uses regular assessment and escalation until minimal disease activity is reached. Patients benefit from explicit timelines and objective domain measures rather than waiting for slow partial improvement. Tight control reduces long-term disability risk.",
+    "SPA003": "Axial spondyloarthritis targets often use ASDAS/BASDAI plus function and inflammation markers when relevant. Imaging changes (MRI inflammation, radiographic progression) can lag behind symptom improvement; remission planning balances symptom control with objective inflammation suppression and functional maintenance.",
+    "SPA004": "Biologic class choice depends on domains and comorbidities: TNF inhibitors often benefit axial disease, uveitis, and IBD; IL-17 agents can be highly effective for skin and axial symptoms but may worsen IBD in some patients; IL-23 pathway agents are relevant for psoriasis/PsA domains. The remission goal is maximal domain control with minimal comorbidity risk.",
+    "SPA005": "NSAIDs can provide symptom control and are first-line in many axial cases, but failure to reach low activity targets should prompt escalation to biologic therapy to prevent persistent inflammation and disability. Response should be assessed with standardized indices and function over time.",
+    "SPA006": "Comorbid IBD and uveitis strongly influence safest therapy selection; cardiovascular risk and infection history shape monitoring and prevention. A remission plan integrates these factors to avoid therapy that controls one domain while exacerbating another.",
+    "SPA007": "Tapering after prolonged stability should be gradual with objective monitoring of symptoms and activity indices. Early relapse detection and rapid dose restoration help preserve long-term control. Patients with prior severe disease or rapid relapse history may not be good taper candidates.",
+    "SPA008": "Biomarkers are less reliable in PsA than RA; remission is best tracked with clinical domain measures and functional status. This prevents false reassurance from normal labs in active disease and helps target therapy to the domains driving impairment.",
+    "SPA009": "Exercise and physical therapy help maintain posture, mobility, and pain control and support sustained low activity, especially in axial disease. Patients should track function and stiffness alongside clinical activity measures for a comprehensive remission plan.",
+    "SPA010": "Shared decision-making should clarify target state, domain priorities, and safety concerns, including infection prevention and comorbidity management. A stable long-term regimen that meets targets with acceptable risk is the practical remission strategy.",
+
+    "AAV001": "Remission induction in ANCA-associated vasculitis aims to rapidly stop organ-threatening inflammation using potent immunosuppression plus glucocorticoids, followed by transition to maintenance. Current guidance supports rituximab or cyclophosphamide (with glucocorticoids) for severe disease, with steroid tapering to reduce toxicity. The remission goal is symptom and organ stabilization with objective improvement in inflammatory markers and organ function.",
+    "AAV002": "Maintenance reduces relapse risk after induction; rituximab is often preferred, with alternatives like azathioprine or methotrexate depending on patient factors. Duration is individualized based on relapse history, ANCA type, organ involvement, and tolerance. Sustained maintenance improves durable remission probability.",
+    "AAV003": "Monitoring uses symptoms, exam, labs (renal function, urinalysis), and structured activity scores like BVAS. ANCA titers can fluctuate and do not reliably define remission or relapse alone; decisions must be clinical and organ-based. This avoids over- or under-treatment driven by isolated serology.",
+    "AAV004": "Renal remission focuses on stabilizing or improving creatinine/eGFR, reducing proteinuria and hematuria, and resolving active urinary sediment. Chronic scarring can leave residual abnormalities; distinguishing active inflammation from damage requires trend monitoring and sometimes biopsy/consultation. Over-treating chronic damage increases toxicity without improving remission.",
+    "AAV005": "Steroid tapering follows predefined schedules aiming to reach low doses within months while maintaining disease control; rapid taper can risk relapse, while slow taper increases toxicity. Using objective markers and clinical stability to guide tapering improves durable remission with fewer complications.",
+    "AAV006": "Infection prevention includes vaccination, screening for latent infections, and prophylaxis where indicated (e.g., Pneumocystis in selected regimens). This reduces treatment interruptions and severe infections that derail remission maintenance.",
+    "AAV007": "Relapse severity (major organ-threatening vs minor) guides re-induction intensity. Major relapses often require re-induction with potent agents; minor relapses may be managed by optimizing maintenance. Clear classification prevents both undertreatment of major relapse and unnecessary toxicity for minor symptoms.",
+    "AAV008": "Patients should track ENT, pulmonary, renal, skin, and neurologic symptoms associated with relapse and have an action plan for prompt evaluation. Early intervention prevents organ damage and improves re-induction success toward remission.",
+    "AAV009": "Shared decision-making balances relapse risk (which can be high) against long-term immunosuppression toxicity. Patients should understand monitoring plans, tapering criteria, and infection prevention. Durable remission is achieved by sustained control with the least toxic effective maintenance.",
+    "AAV010": "Induction response is assessed over weeks to months; failure to improve organ markers or persistent activity should trigger reassessment for adherence, diagnosis, complications, or refractory disease. Early re-evaluation improves remission probability and reduces irreversible organ damage."
+  }
+}

@@ -19,14 +19,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DOCTOR_TYPES = {
-    'immune': {'name': 'Dr. Immunity', 'specialty': 'Autoimmune Specialist',
-               'expertise': 'IBD, RA, and immune system disorders', 'available': True},
-    'onco':   {'name': 'Dr. Onco', 'specialty': 'Oncology Specialist',
-               'expertise': 'Cancer care and screening', 'available': False},
-    'cardio': {'name': 'Dr. Cardio', 'specialty': 'Heart Disease Specialist',
-               'expertise': 'Cardiovascular health', 'available': False},
-    'mind':   {'name': 'Dr. Mind', 'specialty': 'Mental Health Specialist',
-               'expertise': 'Anxiety, depression, mental well-being', 'available': False},
+    'immune': {'name': 'Dr. Immunity', 'specialty': 'Autoimmune Disease Specialist',
+               'expertise': 'Rheumatoid arthritis, Crohn\'s disease/IBD, lupus (SLE), Sjogren\'s syndrome, and related autoimmune conditions',
+               'available': True},
 }
 
 _pipeline = None

@@ -32,15 +32,24 @@ from pipeline.config import (
 )
 
 
+def _fmt_sft(instruction: str, response: str) -> dict:
+    """Format an instruction/response pair using Llama 3 chat template."""
+    return {
+        "prompt": (
+            f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n"
+            f"{instruction}<|eot_id|>"
+            f"<|start_header_id|>assistant<|end_header_id|>\n\n"
+        ),
+        "completion": f"{response}<|eot_id|>",
+    }
+
+
 def load_training_data():
     """Load training examples as prompt/completion dicts for TRL's completion-masking.
 
     Returns list of {"prompt": ..., "completion": ...} dicts.
     TRL's SFTTrainer natively supports this format and correctly masks
     prompt tokens from the loss (completion_only_loss works properly).
-
-    Uses /no_think — training responses are direct summaries with no <think> block.
-    /think would conflict with the base model's thinking mode, producing garbage.
 
     Filtering:
     - Medical Q&A examples from body chunks are EXCLUDED — body chunks are raw
@@ -56,7 +65,6 @@ def load_training_data():
         sys.exit(1)
     data = load_json(data_file)
 
-    _MEDICAL_QA_PREFIX = "Based on evidence from recent research"
     examples = []
     skipped_body = 0
     for item in data:
@@ -65,16 +73,10 @@ def load_training_data():
         if not instruction or not response:
             continue
         is_abstract = item.get("is_abstract_ref", False)
-        # Skip ALL body-chunk examples: raw body text (1500 chars) has high loss
-        # and teaches the model to produce paper-dump responses.
-        # Only abstract chunks (150-300 word structured summaries) are kept.
         if not is_abstract:
             skipped_body += 1
             continue
-        examples.append({
-            "prompt": f"<|im_start|>user\n/no_think {instruction}<|im_end|>\n",
-            "completion": f"<|im_start|>assistant\n{response}<|im_end|>\n",
-        })
+        examples.append(_fmt_sft(instruction, response))
     if skipped_body:
         print(f"  Skipped {skipped_body} body-chunk examples (all sections) → abstract-only training")
     return examples
@@ -179,10 +181,7 @@ _REPLAY_PAIRS = [
 
 
 def _fmt_replay(instruction: str, response: str) -> dict:
-    return {
-        "prompt": f"<|im_start|>user\n/no_think {instruction}<|im_end|>\n",
-        "completion": f"<|im_start|>assistant\n{response}<|im_end|>\n",
-    }
+    return _fmt_sft(instruction, response)
 
 
 def load_replay_buffer(n_domain: int) -> list:

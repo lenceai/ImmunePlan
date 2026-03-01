@@ -268,12 +268,12 @@ RESPONSE_PREFIXES = {
 AUTOIMMUNE_KEYWORDS = {
     "high": [
         "rheumatoid arthritis", "crohn", "inflammatory bowel", "lupus", "sjogren",
-        "psoriasis", "ankylosing spondylitis", "multiple sclerosis", "autoimmune",
+        "psoriatic arthritis", "ankylosing spondylitis", "autoimmune",
         "immune-mediated", "biologics", "dmard", "anti-tnf", "b-cell", "t-cell",
-        "interleukin", "cytokine", "autoantibody", "vasculitis", "uveitis",
+        "interleukin", "cytokine", "autoantibody", "vasculitis",
     ],
     "medium": [
-        "immune", "inflammatory", "monoclonal antibody", "immunotherapy",
+        "immune", "inflammatory", "monoclonal antibody", "immunosuppressive",
         "gut microbiome", "mucosal immunity", "pathogenesis", "remission", "disease activity",
         "methotrexate", "adalimumab", "infliximab", "etanercept", "rituximab",
         "JAK inhibitor", "toll-like receptor", "complement system",
@@ -312,12 +312,12 @@ ARXIV_QUERIES = [
     "Crohn disease surgery stricture", "IBD biologic therapy anti-TNF",
     # Lupus, Sjogren, other autoimmune
     "systemic lupus erythematosus diagnosis treatment",
+    "lupus nephritis biomarkers treatment",
     "Sjogren syndrome diagnosis xerostomia xerophthalmia",
     "autoimmune disease diagnosis treatment", "autoimmune disease machine learning",
-    "immune system dysfunction", "vagus nerve immune system",
-    "fasting immune system", "diet autoimmune disease",
     "psoriatic arthritis treatment biologic",
     "ankylosing spondylitis axial spondyloarthritis biologic",
+    "vasculitis autoimmune diagnosis treatment",
 ]
 
 PUBMED_QUERIES = [
@@ -694,14 +694,15 @@ def build_chunks_for_paper(paper: Dict, logger=None) -> List[Dict]:
 # Training prompt builders — produce proper instruction-response pairs
 # ---------------------------------------------------------------------------
 
-def _nemotron_training_text(instruction: str, response: str) -> str:
-    """Format a full instruction+response in Nemotron chat format for SFT.
-    Uses /no_think — training responses are direct answers without <think> blocks.
+def _format_training_text(instruction: str, response: str) -> str:
+    """Format a full instruction+response in Llama 3 chat format for SFT.
     Must match format used in pipeline/05_finetune.py load_training_data().
     """
     return (
-        f"<|im_start|>user\n/no_think {instruction}<|im_end|>\n"
-        f"<|im_start|>assistant\n{response}<|im_end|>\n"
+        f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n"
+        f"{instruction}<|eot_id|>"
+        f"<|start_header_id|>assistant<|end_header_id|>\n\n"
+        f"{response}<|eot_id|>"
     )
 
 
@@ -750,7 +751,7 @@ def build_training_examples(chunk: Dict) -> List[Dict]:
     examples = []
     for instruction, response in generate_qa_pairs(chunk):
         examples.append({
-            "text": _nemotron_training_text(instruction, response),
+            "text": _format_training_text(instruction, response),
             "instruction": instruction,
             "response": response,
             "paper_title": chunk['paper_title'],

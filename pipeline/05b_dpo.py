@@ -198,7 +198,6 @@ def run():
         # DPO-specific
         beta=0.1,               # KL divergence weight
         max_length=max_len,
-        max_prompt_length=max_len // 2,
         loss_type="sigmoid",    # standard DPO loss
     )
 
@@ -207,11 +206,11 @@ def run():
 
     trainer = DPOTrainer(
         model=model,
-        ref_model=None,   # use implicit reference (original model weights)
+        ref_model=None,
         args=dpo_config,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
     )
 
     print("\nStarting DPO training...")

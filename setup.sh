@@ -79,7 +79,7 @@ WANDB_API_KEY=
 WANDB_PROJECT=autoimmune-llm
 
 # Model Configuration
-MODEL_NAME=nvidia/Nemotron-Cascade-8B-Thinking
+MODEL_NAME=aaditya/Llama3-OpenBioLLM-8B
 MAX_SEQ_LENGTH=1024
 
 # Training Configuration

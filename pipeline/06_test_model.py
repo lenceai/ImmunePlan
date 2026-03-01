@@ -125,10 +125,8 @@ def run():
     for i, q in enumerate(AUTOIMMUNE_QUESTIONS, 1):
         print(f"  [{i}/{total}] {q['id']}: {q['category']}")
         try:
-            # Fine-tuned model trained with /no_think — use same mode for inference.
-            # /think would conflict with the LoRA's learned direct-response behaviour.
             prompt = format_prompt(q['question'], system_prompt=_MEDICAL_SYSTEM_PROMPT,
-                                   tokenizer=tokenizer, use_thinking=False)
+                                   tokenizer=tokenizer)
             response, gen_time, tokens = generate_response(
                 model, tokenizer, prompt, max_new_tokens=1024, temperature=0.3,
             )

@@ -1,5 +1,5 @@
 {
-  "model": "nvidia/Nemotron-Cascade-8B-Thinking",
+  "model": "aaditya/Llama3-OpenBioLLM-8B",
   "tier": "maximum",
   "gpu": {
     "available": true,
@@ -18,5 +18,5 @@
     ],
     "version": "13.0"
   },
-  "test_time": 14.812724590301514
+  "test_time": 15.219981670379639
 }
