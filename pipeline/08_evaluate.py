@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 08: Evaluation
-Book: Chapter 9 — Hallucination metrics, RAGAS ground truth, quality scoring,
+Hallucination metrics, RAGAS ground truth, quality scoring,
                    red teaming, trajectory analysis.
 
 Standalone: conda run -n base python pipeline/08_evaluate.py

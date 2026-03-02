@@ -30,7 +30,7 @@ class ParameterProfile:
     """
     Configurable generation parameter profile per use case.
 
-    Book recommendation: "Temperature, top-p, max tokens, stop sequences,
+    Recommendation: "Temperature, top-p, max tokens, stop sequences,
     and penalties should all be treated as configurable parameters in your
     deployment pipeline — not hardcoded values."
     """
@@ -371,7 +371,7 @@ def rephrase_query_for_retrieval(query: str) -> List[str]:
     """
     Generate multiple query variations for improved RAG retrieval.
 
-    Book concept: "Query rephrasing and augmentation using LLMs to add
+    Concept: "Query rephrasing and augmentation using LLMs to add
     relevant keywords and generate multiple query variations."
 
     This is a rule-based implementation; with an LLM available,
@@ -416,7 +416,7 @@ class SelfConsistency:
     """
     Self-Consistency: generate multiple outputs and take majority vote.
 
-    Book concept: "Generate multiple outputs for the same input and
+    Concept: "Generate multiple outputs for the same input and
     cross-verify results. The majority answer across several generations
     is more likely to be correct."
 

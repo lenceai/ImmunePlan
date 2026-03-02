@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 09: Safety & Responsible AI Testing
-Book: Chapter 11 — PII detection, bias testing, content safety, name experiment.
+PII detection, bias testing, content safety, name experiment.
 
 Standalone: python pipeline/09_safety.py
 Output:     results/safety_report.json

@@ -17,9 +17,6 @@ import gc
 import os
 import random
 
-# Must be set BEFORE any CUDA/torch initialisation.
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
-
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -102,6 +99,8 @@ def run():
     from datasets import Dataset
 
     vram = get_vram_gb()
+    # Per-device VRAM for tier selection: each torchrun process loads the full
+    # model on its own GPU, so we must not size based on total VRAM.
     vram_for_tier = get_vram_gb(per_device=True)
     if vram == 0:
         print("No GPU detected. DPO requires CUDA. Skipping.")
@@ -138,7 +137,10 @@ def run():
         print(f"\nNo SFT adapter found at {sft_model_path}. Using base model.")
         sft_model_path = None
 
-    print(f"Loading base model: {base_model_name}")
+    # When launched via torchrun, LOCAL_RANK tells this process which GPU to use.
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    device_str = f"cuda:{local_rank}"
+    print(f"Loading base model: {base_model_name} on {device_str}")
     clear_gpu()
     gc.collect()
 
@@ -152,9 +154,10 @@ def run():
     model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
         quantization_config=get_quantization_config(),
-        torch_dtype=torch.float16,
-        device_map="cuda:0",
+        dtype=torch.float16,
+        device_map=device_str,
         trust_remote_code=True,
+        use_safetensors=False,
     )
 
     if sft_model_path and (sft_model_path / "adapter_config.json").exists():
@@ -191,7 +194,8 @@ def run():
         lr_scheduler_type="cosine",
         optim="paged_adamw_8bit",
         gradient_checkpointing=True,
-        gradient_checkpointing_kwargs={"use_reentrant": True},
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        ddp_find_unused_parameters=False,
         report_to="none",
         dataloader_num_workers=0,
         remove_unused_columns=False,
@@ -246,4 +250,23 @@ def main():
 
 
 if __name__ == "__main__":
+    # When run standalone with 2+ GPUs, re-execute via torchrun so both GPUs train
+    if "LOCAL_RANK" not in os.environ:
+        import subprocess
+        import torch
+        n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+        if n_gpus >= 2:
+            root = str(Path(__file__).parent.parent)
+            script = str(Path(__file__).resolve())
+            print(f"Detected {n_gpus} GPUs — launching data-parallel training via torchrun…")
+            rc = subprocess.run(
+                [
+                    sys.executable, "-m", "torch.distributed.run",
+                    f"--nproc_per_node={n_gpus}",
+                    "--master_port=29502",
+                    script,
+                ],
+                cwd=root,
+            )
+            sys.exit(rc.returncode)
     main()

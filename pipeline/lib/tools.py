@@ -76,7 +76,7 @@ class ToolOutputValidation:
     """
     Validation rules for tool outputs.
 
-    Book concept: "Validate tool outputs — check that returned data is
+    Concept: "Validate tool outputs — check that returned data is
     within reasonable ranges before the agent uses the output."
     """
     required_keys: List[str] = field(default_factory=list)

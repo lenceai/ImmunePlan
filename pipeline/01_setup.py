@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 01: Setup & Model Download
-Book: Chapter 1 — Define reliability requirements, download model, check GPU.
+Define reliability requirements, download model, check GPU.
 
 Standalone: python pipeline/01_setup.py
 Pipeline:   Integrated via run_pipeline.py

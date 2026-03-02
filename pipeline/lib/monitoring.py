@@ -311,7 +311,7 @@ class MonitoringService:
         """
         Compare quality metrics week-over-week.
 
-        Book concept: "Automated quality metrics with week-over-week
+        Concept: "Automated quality metrics with week-over-week
         comparison catches invisible drift."
         """
         if len(self.traces) < 2:
@@ -362,7 +362,7 @@ class MonitoringService:
 
 class FailurePatternDetector:
     """
-    Detect common production failure patterns from the book:
+    Detect common production failure patterns:
     1. "Works in the lab" trap
     2. "Invisible drift" problem
     3. "Cost explosion" surprise
@@ -429,7 +429,7 @@ class NameExperimentBiasTest:
     """
     The 'Name Experiment' — testing for demographic bias.
 
-    Book concept: "Testing whether responses differ based on names
+    Concept: "Testing whether responses differ based on names
     like 'Jamal' vs. 'John' or 'Maria' vs. 'Emily' is a practical
     technique for revealing hidden biases."
     """

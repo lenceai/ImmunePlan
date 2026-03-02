@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 04: Build RAG Pipeline
-Book: Chapters 3-4 — Vector store, embeddings, hybrid retrieval for grounding.
+Vector store, embeddings, hybrid retrieval for grounding.
 
 Standalone: conda run -n base python pipeline/04_build_rag.py
 Output:     data/vector_store/   (chunks.json + embeddings.npy)

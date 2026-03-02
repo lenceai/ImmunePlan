@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 03: Collect Training Data
-Book: Chapters 3-4 prep — Download research papers, extract text, chunk for RAG & fine-tuning.
+Book: Data prep — Download research papers, extract text, chunk for RAG & fine-tuning.
 
 Standalone: conda run -n base python pipeline/03_collect_data.py
 Output:     data/raw_papers.json, data/paper_chunks.json, data/papers_training_data.json
@@ -17,6 +17,7 @@ import re
 import time
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
+from tenacity import retry, stop_after_attempt, wait_exponential
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pipeline.config import (
@@ -303,27 +304,40 @@ ARXIV_QUERIES = [
     "rheumatoid arthritis biomarkers", "rheumatoid arthritis DMARDs biologics",
     "rheumatoid arthritis remission", "rheumatoid arthritis anti-CCP RF diagnosis",
     "treat-to-target rheumatoid arthritis DAS28", "JAK inhibitor rheumatoid arthritis",
-    "TNF inhibitor biologic DMARD autoimmune",
-    # Crohn's disease — expanded to improve coverage
+    "TNF inhibitor biologic DMARD autoimmune", "rheumatoid arthritis synovitis",
+    "rheumatoid arthritis joint damage", "rheumatoid arthritis methotrexate",
+    # Crohn's disease
     "Crohn's disease inflammatory bowel", "Crohn disease diagnosis treatment",
     "Crohn's disease biomarkers calprotectin", "Crohn disease biologics infliximab",
     "Crohn's disease remission vedolizumab", "Crohn disease ustekinumab biologic",
     "inflammatory bowel disease mucosal healing", "Crohn's disease fistula perianal",
     "Crohn disease surgery stricture", "IBD biologic therapy anti-TNF",
-    # Lupus, Sjogren, other autoimmune
+    "Crohn disease adalimumab", "ulcerative colitis biologic",
+    # Lupus, Sjogren
     "systemic lupus erythematosus diagnosis treatment",
-    "lupus nephritis biomarkers treatment",
+    "lupus nephritis biomarkers treatment", "lupus nephritis immunosuppression",
     "Sjogren syndrome diagnosis xerostomia xerophthalmia",
+    "Sjogren anti-SSA anti-SSB", "lupus hydroxychloroquine",
+    # Other autoimmune
     "autoimmune disease diagnosis treatment", "autoimmune disease machine learning",
-    "psoriatic arthritis treatment biologic",
+    "psoriatic arthritis treatment biologic", "psoriatic arthritis DMARD",
     "ankylosing spondylitis axial spondyloarthritis biologic",
-    "vasculitis autoimmune diagnosis treatment",
+    "vasculitis autoimmune diagnosis treatment", "ANCA vasculitis treatment",
+    "inflammatory myopathy dermatomyositis", "scleroderma systemic sclerosis",
+    "autoimmune hepatitis treatment", "myasthenia gravis immunosuppression",
 ]
 
 PUBMED_QUERIES = [
-    "rheumatoid arthritis[Title] AND free full text[sb] AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
-    "Crohn disease[Title] AND free full text[sb] AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
-    "autoimmune disease[Title] AND free full text[sb] AND (2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "rheumatoid arthritis[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "Crohn disease[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "inflammatory bowel disease[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "systemic lupus erythematosus[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "lupus nephritis[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "Sjogren syndrome[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "autoimmune disease[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "psoriatic arthritis[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "ankylosing spondylitis[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
+    "vasculitis[Title] AND free full text[sb] AND (2022[PDAT] OR 2023[PDAT] OR 2024[PDAT] OR 2025[PDAT])",
 ]
 
 # Matches bare section headers in PDF text (with optional leading number)
@@ -370,10 +384,20 @@ def download_pdf(pdf_url: str, paper_id: str, logger=None) -> Optional[Path]:
         return pdf_path
 
     try:
-        r = requests.get(
-            pdf_url, timeout=60,
-            headers={"User-Agent": "ImmunePlan/1.0 (autoimmune research project)"},
+        import requests
+        
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            reraise=True
         )
+        def _fetch():
+            return requests.get(
+                pdf_url, timeout=60,
+                headers={"User-Agent": "ImmunePlan/1.0 (autoimmune research project)"},
+            )
+            
+        r = _fetch()
         if r.status_code != 200:
             if logger:
                 logger.warning(f"PDF HTTP {r.status_code}: {pdf_url}")
@@ -494,7 +518,7 @@ def chunk_text(text: str) -> List[Dict]:
 # PubMed / arXiv search
 # ---------------------------------------------------------------------------
 
-def search_arxiv(queries, max_per_query=20, logger=None):
+def search_arxiv(queries, max_per_query=50, logger=None):
     try:
         import arxiv
     except ImportError:
@@ -504,13 +528,23 @@ def search_arxiv(queries, max_per_query=20, logger=None):
 
     papers = []
     client = arxiv.Client()
+    
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
+    def _run_search(q):
+        search = arxiv.Search(
+            query=q, max_results=max_per_query,
+            sort_by=arxiv.SortCriterion.SubmittedDate,
+        )
+        return list(client.results(search))
+        
     for q in queries:
         try:
-            search = arxiv.Search(
-                query=q, max_results=max_per_query,
-                sort_by=arxiv.SortCriterion.SubmittedDate,
-            )
-            for r in client.results(search):
+            results = _run_search(q)
+            for r in results:
                 if r.summary and len(r.summary) >= 100:
                     aid = r.entry_id.split('/')[-1]
                     papers.append({
@@ -527,7 +561,7 @@ def search_arxiv(queries, max_per_query=20, logger=None):
     return papers
 
 
-def search_pubmed(queries, max_per_query=10, logger=None):
+def search_pubmed(queries, max_per_query=50, logger=None):
     if not PUBMED_EMAIL:
         if logger:
             logger.warning("PUBMED_EMAIL not set, skipping PubMed")
@@ -541,38 +575,48 @@ def search_pubmed(queries, max_per_query=10, logger=None):
 
     Entrez.email = PUBMED_EMAIL
     papers = []
+    
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
+    def _run_pubmed_search(q):
+        with Entrez.esearch(db="pubmed", term=q, retmax=max_per_query) as handle:
+            record = Entrez.read(handle)
+            
+        pmids = record.get("IdList", [])
+        if not pmids:
+            return []
+            
+        with Entrez.efetch(db="pubmed", id=",".join(pmids), retmode="xml") as handle:
+            return Entrez.read(handle).get("PubmedArticle", [])
+
     for q in queries:
         try:
-            handle = Entrez.esearch(db="pubmed", term=q, retmax=max_per_query)
-            record = Entrez.read(handle)
-            handle.close()
-            pmids = record.get("IdList", [])
-            if pmids:
-                handle = Entrez.efetch(db="pubmed", id=",".join(pmids), retmode="xml")
-                records = Entrez.read(handle)
-                handle.close()
-                for rec in records.get("PubmedArticle", []):
-                    article = rec.get("MedlineCitation", {}).get("Article", {})
-                    abstract_list = article.get("Abstract", {}).get("AbstractText", [])
-                    abstract = (
-                        " ".join(str(a) for a in abstract_list)
-                        if isinstance(abstract_list, list)
-                        else str(abstract_list)
-                    )
-                    if abstract and len(abstract) >= 100:
-                        # Extract PMC ID for full-text access
-                        pmc_id = None
-                        pubmed_data = rec.get("PubmedData", {})
-                        for id_item in pubmed_data.get("ArticleIdList", []):
-                            if getattr(id_item, "attributes", {}).get("IdType") == "pmc":
-                                pmc_id = str(id_item)
-                                break
-                        papers.append({
-                            "source": "PubMed",
-                            "title": article.get("ArticleTitle", ""),
-                            "abstract": abstract,
-                            "pmc_id": pmc_id,
-                        })
+            records = _run_pubmed_search(q)
+            for rec in records:
+                article = rec.get("MedlineCitation", {}).get("Article", {})
+                abstract_list = article.get("Abstract", {}).get("AbstractText", [])
+                abstract = (
+                    " ".join(str(a) for a in abstract_list)
+                    if isinstance(abstract_list, list)
+                    else str(abstract_list)
+                )
+                if abstract and len(abstract) >= 100:
+                    # Extract PMC ID for full-text access
+                    pmc_id = None
+                    pubmed_data = rec.get("PubmedData", {})
+                    for id_item in pubmed_data.get("ArticleIdList", []):
+                        if getattr(id_item, "attributes", {}).get("IdType") == "pmc":
+                            pmc_id = str(id_item)
+                            break
+                    papers.append({
+                        "source": "PubMed",
+                        "title": article.get("ArticleTitle", ""),
+                        "abstract": abstract,
+                        "pmc_id": pmc_id,
+                    })
             time.sleep(0.5)
         except Exception as e:
             if logger:
@@ -587,9 +631,17 @@ def fetch_pmc_fulltext(pmc_id: str, email: str = "", logger=None) -> Optional[st
         import xml.etree.ElementTree as ET
         if email:
             Entrez.email = email
-        handle = Entrez.efetch(db="pmc", id=pmc_id, rettype="full", retmode="xml")
-        xml_bytes = handle.read()
-        handle.close()
+            
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            reraise=True
+        )
+        def _fetch_xml():
+            with Entrez.efetch(db="pmc", id=pmc_id, rettype="full", retmode="xml") as h:
+                return h.read()
+                
+        xml_bytes = _fetch_xml()
         root = ET.fromstring(xml_bytes)
         paragraphs = []
         for elem in root.iter("p"):

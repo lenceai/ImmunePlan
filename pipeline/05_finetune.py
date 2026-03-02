@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
 """
 Step 05: Adaptive Fine-Tuning
-Book: Chapter 5 — Auto-select QLoRA/DoRA/High-Rank LoRA based on available GPU memory.
+Auto-select QLoRA/DoRA/High-Rank LoRA based on available GPU memory.
 
-Training adapts to hardware:
+Training adapts to hardware (per-device VRAM, since each torchrun process owns
+one GPU and loads the full model independently):
   < 16 GB VRAM → QLoRA (rank 8, attention only)
   16-23 GB     → QLoRA (rank 16, attention only)
-  24-39 GB     → DoRA (rank 32, attention + MLP)
-  40+ GB       → High-Rank LoRA (rank 64, all layers)
+  24-39 GB     → DoRA (rank 64, attention + MLP + lm_head)
+  40+ GB       → High-Rank LoRA (rank 128, all layers + lm_head)
 
-Standalone: python pipeline/05_finetune.py
-Output:     models/finetuned_model/
+When ≥2 GPUs are available, run_pipeline.py launches this script via torchrun
+so both GPUs train data-parallel replicas and sync LoRA adapter gradients.
+
+Standalone (single GPU): python pipeline/05_finetune.py
+Multi-GPU standalone:     torchrun --nproc_per_node=2 pipeline/05_finetune.py
+Output:                   models/finetuned_model/
 """
 import sys
 import gc
 import os
-
-# Must be set BEFORE any CUDA/torch initialisation.
-# Restricts PyTorch to GPU 0 so Trainer never wraps the model in DataParallel
-# and cuBLAS only sees the target device (avoids CUBLAS_STATUS_NOT_SUPPORTED
-# issues that appear when multi-GPU visibility is combined with quantised models).
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -217,9 +216,8 @@ def run():
         print("Skipping — use baseline model or run on GPU-equipped machine.")
         return {"status": "skipped", "reason": "no_gpu"}
 
-    # Use per-device VRAM for tier selection since we train on a single GPU
-    # (device_map="cuda:0"). Total VRAM across all GPUs would select a tier
-    # too aggressive for the available single-device memory.
+    # Each torchrun process loads the full model on its own GPU (data parallelism),
+    # so tier selection must be based on per-device VRAM, not total VRAM.
     vram_for_tier = get_vram_gb(per_device=True)
     tier_name, tier = select_training_tier(vram_for_tier)
     print(f"GPU: {vram:.1f} GB VRAM total, {vram_for_tier:.1f} GB per device")
@@ -244,7 +242,12 @@ def run():
         print("WARNING: Very few training examples. Results may be poor.")
 
     # --- Load model ---
-    print(f"\nLoading model: {MODEL_NAME}...")
+    # When launched via torchrun, LOCAL_RANK tells this process which GPU to use.
+    # Each process loads the full model on its own device; gradients for the LoRA
+    # adapter weights are synced across processes by DDP after each backward pass.
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    device_str = f"cuda:{local_rank}"
+    print(f"\nLoading model: {MODEL_NAME} on {device_str}...")
     clear_gpu()
     gc.collect()
 
@@ -254,7 +257,8 @@ def run():
 
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME, quantization_config=get_quantization_config(),
-        torch_dtype=torch.float16, device_map="cuda:0", trust_remote_code=True,
+        dtype=torch.float16, device_map=device_str, trust_remote_code=True,
+        use_safetensors=False,
     )
     model = prepare_model_for_kbit_training(model)
     if hasattr(model, "config") and getattr(model.config, "use_cache", None) is not None:
@@ -319,7 +323,9 @@ def run():
         lr_scheduler_type="cosine",
         optim="paged_adamw_8bit",
         gradient_checkpointing=True,
-        gradient_checkpointing_kwargs={"use_reentrant": True},
+        # use_reentrant=False is required for DDP (torchrun multi-GPU) correctness.
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        ddp_find_unused_parameters=False,
         report_to="none",
         dataloader_num_workers=0,
         remove_unused_columns=False,
@@ -366,5 +372,25 @@ def main():
         else:
             raise
 
+
 if __name__ == "__main__":
+    # When run standalone with 2+ GPUs, re-execute via torchrun so both GPUs train
+    if "LOCAL_RANK" not in os.environ:
+        import subprocess
+        import torch
+        n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+        if n_gpus >= 2:
+            root = str(Path(__file__).parent.parent)
+            script = str(Path(__file__).resolve())
+            print(f"Detected {n_gpus} GPUs — launching data-parallel training via torchrun…")
+            rc = subprocess.run(
+                [
+                    sys.executable, "-m", "torch.distributed.run",
+                    f"--nproc_per_node={n_gpus}",
+                    "--master_port=29501",
+                    script,
+                ],
+                cwd=root,
+            )
+            sys.exit(rc.returncode)
     main()

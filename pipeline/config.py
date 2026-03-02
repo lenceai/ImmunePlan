@@ -3,7 +3,7 @@
 Unified Configuration — Single source of truth for the entire pipeline.
 
 Merges:
-  - Reliability specification (Ch 1)
+  - Reliability specification
   - Model & training config
   - RAG, safety, monitoring config
   - GPU utilities
@@ -26,6 +26,11 @@ from enum import Enum
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Transformers can spawn a background "safetensors conversion" thread that queries
+# repo discussions. Some repos disable discussions, which can produce noisy 403
+# stacktraces even though the model load succeeds. Disable that behavior.
+os.environ.setdefault("DISABLE_SAFETENSORS_CONVERSION", "1")
 
 
 # =============================================================================
@@ -60,7 +65,7 @@ TRAIN_LR = float(os.getenv("TRAIN_LR", "2e-4"))
 
 
 # =============================================================================
-# RELIABILITY SPEC (Ch 1)
+# RELIABILITY SPEC
 # =============================================================================
 
 RELIABILITY_SPEC = {
@@ -89,11 +94,12 @@ RELIABILITY_SPEC = {
 
 
 # =============================================================================
-# GPU-ADAPTIVE TRAINING TIERS (Ch 5)
+# GPU-ADAPTIVE TRAINING TIERS
 # =============================================================================
 
 TRAINING_TIERS = {
     "minimal": {
+        # < 16 GB: QLoRA, attention-only adapters to stay within memory budget.
         "method": "QLoRA", "rank": 8, "alpha": 16,
         "targets": ["q_proj", "k_proj", "v_proj", "o_proj"],
         "use_dora": False, "batch_size": 1, "grad_accum": 16,
@@ -101,28 +107,42 @@ TRAINING_TIERS = {
         "vram_range": "< 16 GB",
     },
     "standard": {
+        # 16–22 GB: QLoRA, attention-only, moderate rank.
         "method": "QLoRA", "rank": 16, "alpha": 32,
         "targets": ["q_proj", "k_proj", "v_proj", "o_proj"],
         "use_dora": False, "batch_size": 2, "grad_accum": 8,
         "seq_length": 1024, "lr": 2e-4,
-        "vram_range": "16-23 GB",
+        "vram_range": "16–22 GB",
     },
     "enhanced": {
-        "method": "DoRA", "rank": 32, "alpha": 64,
-        "targets": ["q_proj", "k_proj", "v_proj", "o_proj",
-                     "gate_proj", "up_proj", "down_proj"],
-        "use_dora": True, "batch_size": 2, "grad_accum": 8,
-        "seq_length": 2048, "lr": 2e-4,
-        "vram_range": "24-39 GB",
+        # 23+ GB (e.g. RTX 3090) — triggered for each data-parallel process.
+        # DoRA rank=64 across all attention + MLP layers + lm_head gives ~3× more
+        # trainable parameters than the old rank=32 attention-only config.
+        # lm_head trains the output projection, directly shaping token probabilities
+        # and improving domain-specific answer quality.
+        "method": "DoRA", "rank": 64, "alpha": 128,
+        "targets": [
+            "q_proj", "k_proj", "v_proj", "o_proj",
+            "gate_proj", "up_proj", "down_proj",
+            "lm_head",
+        ],
+        # Reduced batch_size to 1 (from 2) and increased grad_accum to 16 (from 8)
+        # to fix CUDA Out of Memory errors, while keeping effective batch size at 16.
+        "use_dora": True, "batch_size": 1, "grad_accum": 16,
+        "seq_length": 2048, "lr": 1e-4,
+        "vram_range": "23–39 GB",
     },
     "maximum": {
-        # Fixed: was seq_length=512 which wasted the extra VRAM headroom.
-        # At 40+ GB we can run rank-64 with full 2048 context and batch_size=2.
-        # Rank-256 with 512 context is worse than rank-64 with 2048 context.
-        "method": "High-Rank LoRA", "rank": 64, "alpha": 128,
-        "targets": ["q_proj", "k_proj", "v_proj", "o_proj",
-                     "gate_proj", "up_proj", "down_proj"],
-        "use_dora": False, "batch_size": 2, "grad_accum": 16,
+        # 40+ GB: High-rank LoRA across all layers including lm_head.
+        # rank=128 gives ~2× the adapter capacity of rank=64 at the cost of
+        # ~2× adapter VRAM (still small — ~500 MB for an 8B model).
+        "method": "High-Rank LoRA", "rank": 128, "alpha": 256,
+        "targets": [
+            "q_proj", "k_proj", "v_proj", "o_proj",
+            "gate_proj", "up_proj", "down_proj",
+            "lm_head",
+        ],
+        "use_dora": False, "batch_size": 4, "grad_accum": 8,
         "seq_length": 2048, "lr": 5e-5,
         "vram_range": "40+ GB",
     },
@@ -132,7 +152,8 @@ TRAINING_TIERS = {
 def select_training_tier(vram_gb: float) -> Tuple[str, Dict]:
     if vram_gb >= 40:
         return "maximum", TRAINING_TIERS["maximum"]
-    if vram_gb >= 24:
+    # 23 GB threshold: RTX 3090 (24 GB) often reports ~23.5–23.6 GB usable
+    if vram_gb >= 23:
         return "enhanced", TRAINING_TIERS["enhanced"]
     if vram_gb >= 16:
         return "standard", TRAINING_TIERS["standard"]
@@ -189,8 +210,8 @@ def get_vram_gb(per_device: bool = False) -> float:
     """Return total VRAM or per-device VRAM (min across GPUs).
 
     Use per_device=True for tier selection when training on a single GPU
-    (device_map='cuda:0') to avoid selecting a tier designed for multi-GPU
-    total VRAM.
+    (training steps pin to cuda:0) to avoid selecting a tier designed for
+    multi-GPU total VRAM.
     """
     info = check_cuda()
     if per_device and info.get("devices"):
@@ -225,7 +246,7 @@ def get_quantization_config():
     )
 
 
-def load_model_and_tokenizer(model_name=None, quantize=True, device_map="cuda:0"):
+def load_model_and_tokenizer(model_name=None, quantize=True, device_map="auto"):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -234,7 +255,15 @@ def load_model_and_tokenizer(model_name=None, quantize=True, device_map="cuda:0"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    kwargs = {"torch_dtype": torch.float16, "device_map": device_map, "trust_remote_code": True}
+    # Some HF repos disable discussions; Transformers' safetensors auto-conversion
+    # can query repo discussions and emit noisy 403 stacktraces. Force loading the
+    # original weights format and skip auto-conversion logic.
+    kwargs = {
+        "dtype": torch.float16,
+        "device_map": device_map,
+        "trust_remote_code": True,
+        "use_safetensors": False,
+    }
     if quantize:
         kwargs["quantization_config"] = get_quantization_config()
 
@@ -260,7 +289,7 @@ def format_prompt(question, system_prompt=None, tokenizer=None, **kwargs):
 
 def generate_response(model, tokenizer, prompt, max_new_tokens=1024,
                       temperature=0.7, top_p=0.9, do_sample=True,
-                      repetition_penalty=1.0):
+                      repetition_penalty=1.0, streamer=None):
     import torch
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     input_len = inputs['input_ids'].shape[1]
@@ -272,6 +301,7 @@ def generate_response(model, tokenizer, prompt, max_new_tokens=1024,
             temperature=temperature, top_p=top_p, do_sample=do_sample,
             pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id,
             repetition_penalty=repetition_penalty,
+            streamer=streamer,
         )
     gen_time = time.time() - start
 

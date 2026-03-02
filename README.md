@@ -1,6 +1,6 @@
 # ImmunePlan — Reliable Medical AI System
 
-10-step pipeline for building a **reliable** autoimmune disease AI assistant, implementing all concepts from *Building Reliable AI Systems* (Manning, 2026).
+11-step pipeline for building a **reliable** autoimmune disease AI assistant. The architecture and methodology are heavily inspired by concepts from *Building Reliable AI Systems* (Manning, 2026).
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the complete concept-to-code mapping.
 
@@ -18,6 +18,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the complete concept-to-code mapping.
 | 08 | `pipeline/08_evaluate.py` | Ch 9 | FActScore, GDR, quality metrics, red teaming |
 | 09 | `pipeline/09_safety.py` | Ch 11 | PII detection, bias testing, name experiment |
 | 10 | `pipeline/10_deploy.py` | Ch 10 | Deploy API with monitoring, dashboards, alerts |
+| 11 | `pipeline/11_cli_chatbot.py` | Ch 6-7 | Interactive command-line autoimmune doctor with paper references |
 
 ## Quick Start
 
@@ -26,6 +27,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the complete concept-to-code mapping.
 python3 pipeline/01_setup.py --skip-download
 python3 pipeline/07_build_agent.py
 python3 pipeline/09_safety.py
+python3 pipeline/11_cli_chatbot.py
 
 # Run entire pipeline
 bash pipeline/run_all.sh
@@ -63,6 +65,7 @@ pipeline/
 ├── 08_evaluate.py      # Ch 9: Evaluation
 ├── 09_safety.py        # Ch 11: Safety
 ├── 10_deploy.py        # Ch 10: Deploy
+├── 11_cli_chatbot.py   # Ch 6-7: Interactive CLI chatbot
 ├── run_all.sh          # Run all steps
 ├── run_pipeline.py     # ZenML pipeline runner
 └── lib/                # Shared library

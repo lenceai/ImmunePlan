@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 10: Deploy API with Monitoring
-Book: Chapter 10 — API deployment with monitoring dashboards, alerts, cost tracking.
+API deployment with monitoring dashboards, alerts, cost tracking.
 
 Standalone: python pipeline/10_deploy.py [--start-api]
 Output:     Prints monitoring dashboard, optionally starts API server

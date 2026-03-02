@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 07: Build Medical Agent
-Book: Chapters 6-7 — Agent with tools, memory, MCP-style interfaces, ReAct loop.
+Agent with tools, memory, MCP-style interfaces, ReAct loop.
 
 Standalone: python pipeline/07_build_agent.py
 Output:     Agent test results printed to console

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 06: Test Fine-Tuned Model
-Book: Chapter 5 — Compare fine-tuned model against baseline.
+Compare fine-tuned model against baseline.
 
 Standalone: conda run -n base python pipeline/06_test_model.py
 Output:     results/finetuned_results.json
@@ -114,11 +114,15 @@ def run():
         tokenizer.pad_token = tokenizer.eos_token
     base_model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME, quantization_config=get_quantization_config(),
-        torch_dtype=torch.float16, device_map="cuda:0", trust_remote_code=True,
+        dtype=torch.float16, device_map="auto", trust_remote_code=True,
+        use_safetensors=False,
     )
     model = PeftModel.from_pretrained(base_model, model_path)
     model.eval()
     print("Model loaded")
+    
+    if rag:
+        rag.tokenizer = tokenizer
 
     results = []
     total = len(AUTOIMMUNE_QUESTIONS)

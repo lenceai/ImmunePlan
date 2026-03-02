@@ -638,7 +638,7 @@ class HallucinationMetrics:
     """
     Formal hallucination measurement framework.
 
-    Implements the book's four-step framework:
+    Implements a four-step framework:
     1. Identify grounding data
     2. Create measurement test sets
     3. Extract claims and validate
@@ -773,7 +773,7 @@ class RedTeamFramework:
     """
     Adversarial testing framework for discovering edge cases.
 
-    Book concept: "Red Teaming subjects the system to adversarial testing
+    Concept: "Red Teaming subjects the system to adversarial testing
     by creative humans trying to make it fail."
     """
 
@@ -851,7 +851,7 @@ class TrajectoryAnalyzer:
     """
     Evaluate agent behavior beyond just final output.
 
-    Book concept: "A correct final answer might hide flawed intermediate
+    Concept: "A correct final answer might hide flawed intermediate
     reasoning, and correct reasoning might produce wrong outputs if one
     tool call fails."
 

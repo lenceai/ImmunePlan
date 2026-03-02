@@ -183,13 +183,30 @@ class IntentRouter:
                                   "ACR", "EULAR", "AGA", "ECCO"],
     }
 
-    def classify(self, query: str) -> AgentIntent:
+    def classify(self, query: str, generate_fn=None) -> AgentIntent:
         query_lower = query.lower()
 
         # Ambiguous / too-vague queries → GENERAL (triggers clarification request)
         if len(query.split()) < 4:
             return AgentIntent.GENERAL
+            
+        if generate_fn:
+            prompt = (
+                "Classify the following medical query into exactly ONE of these categories: "
+                "CRISIS, LAB_INTERPRETATION, DRUG_INFO, DIAGNOSIS, TREATMENT, GUIDELINES, MEDICAL_QA.\n\n"
+                f"Query: '{query}'\n\n"
+                "Category:"
+            )
+            try:
+                response = generate_fn(prompt).strip().upper()
+                # Find the first matching category in the response
+                for intent in AgentIntent:
+                    if intent.name in response:
+                        return intent
+            except Exception as e:
+                logger.warning(f"LLM intent classification failed: {e}. Falling back to keywords.")
 
+        # Fallback to keyword matching
         for intent, keywords in self.INTENT_KEYWORDS.items():
             if intent == AgentIntent.GENERAL:
                 continue
@@ -245,7 +262,7 @@ class MedicalAgent:
         trace = self.monitoring.create_trace(query, "immune")
 
         # Step 1: Classify intent
-        intent = self.router.classify(query)
+        intent = self.router.classify(query, generate_fn=self._generate_fn)
         trace.query_type = intent.value
         steps.append(AgentStep(step_type="think", content=f"Classified intent: {intent.value}"))
 
@@ -497,7 +514,11 @@ class MultiAgentOrchestrator:
     def route_and_process(self, query: str, doctor_type: str = "immune",
                           context: Optional[Dict] = None) -> AgentResult:
         """Route query to appropriate agent and process."""
-        intent = self.router.classify(query)
+        # Try to use LLM for intent classification if the target agent has it
+        target_agent = self.agents.get(doctor_type) or next(iter(self.agents.values()), None)
+        generate_fn = target_agent._generate_fn if target_agent else None
+        
+        intent = self.router.classify(query, generate_fn=generate_fn)
 
         agent_name = self._select_agent(intent, doctor_type)
         agent = self.agents.get(agent_name)

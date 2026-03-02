@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ZenML Pipeline Runner — Orchestrates all 10 steps.
+ZenML Pipeline Runner — Orchestrates all 11 steps.
 
 If ZenML is installed, runs as a ZenML pipeline.
 Otherwise, runs steps sequentially.
@@ -18,11 +18,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Step 04 (RAG) must run before step 02 (baseline) so the vector store exists
+# for RAGAS context retrieval. Step 03 provides paper_chunks.json for step 04.
 STEPS = [
     ("01", "01_setup",        "Setup & Model Download"),
-    ("02", "02_baseline",     "Prompt Engineering Baseline"),
     ("03", "03_collect_data", "Collect Training Data"),
     ("04", "04_build_rag",    "Build RAG Pipeline"),
+    ("02", "02_baseline",     "Prompt Engineering Baseline"),
     ("05", "05_finetune",     "Adaptive Fine-Tuning"),
     ("5b", "05b_dpo",         "DPO Alignment"),
     ("06", "06_test_model",   "Test Fine-Tuned Model"),
@@ -30,9 +32,16 @@ STEPS = [
     ("08", "08_evaluate",     "Evaluation"),
     ("09", "09_safety",       "Safety & Responsible AI"),
     ("10", "10_deploy",       "Deploy with Monitoring"),
+    ("11", "11_cli_chatbot",  "CLI Autoimmune Doctor Chatbot"),
 ]
 
-GPU_STEPS = {"02", "05", "5b", "06", "07", "08"}
+GPU_STEPS = {"02", "05", "5b", "06", "07", "08", "11"}
+
+# Training steps get data-parallel execution via torchrun when ≥2 GPUs are
+# available. Each GPU runs a separate process with its own model copy, syncing
+# LoRA adapter gradients after each backward pass. This gives ~2× throughput
+# compared to single-GPU training.
+TRAIN_STEPS = {"05", "5b"}
 
 
 def _clear_gpu():
@@ -48,17 +57,46 @@ def _clear_gpu():
     gc.collect()
 
 
-def _run_step_in_subprocess(module_name: str) -> int:
-    """Run a pipeline step in a fresh subprocess to isolate CUDA context."""
+def _gpu_count() -> int:
+    try:
+        import torch
+        return torch.cuda.device_count() if torch.cuda.is_available() else 0
+    except Exception:
+        return 0
+
+
+def _run_step_in_subprocess(step_num: str, module_name: str) -> int:
+    """Run a pipeline step in a fresh subprocess to isolate CUDA context.
+
+    Training steps (05, 5b) are launched via torch.distributed.run so that
+    every available GPU runs a data-parallel replica.  All other steps use a
+    plain Python subprocess.
+    """
     root = str(Path(__file__).parent.parent)
-    script = (
-        f"import sys, importlib; sys.path.insert(0, {root!r}); "
-        f"m = importlib.import_module('pipeline.{module_name}'); m.run()"
-    )
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=root,
-    )
+
+    if step_num in TRAIN_STEPS and _gpu_count() >= 2:
+        n_gpus = _gpu_count()
+        script_path = str(Path(__file__).parent / f"{module_name}.py")
+        print(f"  Launching {n_gpus}-GPU data-parallel training via torchrun…")
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "torch.distributed.run",
+                f"--nproc_per_node={n_gpus}",
+                "--master_port=29501",
+                script_path,
+            ],
+            cwd=root,
+        )
+    else:
+        script = (
+            f"import sys, importlib; sys.path.insert(0, {root!r}); "
+            f"m = importlib.import_module('pipeline.{module_name}'); m.run()"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=root,
+        )
+
     return result.returncode
 
 
@@ -84,7 +122,7 @@ def run_sequential(skip=None, isolate_gpu=True):
         try:
             if use_subprocess:
                 print(f"\n  Running step {step_num} in subprocess (GPU isolation)…")
-                rc = _run_step_in_subprocess(module_name)
+                rc = _run_step_in_subprocess(step_num, module_name)
                 if rc != 0:
                     raise RuntimeError(f"subprocess exited with code {rc}")
                 results[step_num] = {"status": "ok"}
@@ -186,12 +224,18 @@ def run_zenml_pipeline(skip=None):
             from pipeline import _10_deploy as m
             return m.run()
 
+    @step
+    def step_11():
+        if "11" not in skip:
+            m = importlib.import_module("pipeline.11_cli_chatbot")
+            return m.run()
+
     @pipeline
     def immuneplan_pipeline():
         s01 = step_01()
-        s02 = step_02()
         s03 = step_03()
         s04 = step_04()
+        s02 = step_02()
         s05 = step_05()
         s05b = step_05b()
         s06 = step_06()
@@ -199,11 +243,15 @@ def run_zenml_pipeline(skip=None):
         s08 = step_08()
         s09 = step_09()
         s10 = step_10()
+        s11 = step_11()
 
     immuneplan_pipeline()
 
 
 def main():
+    print("Clearing GPU memory before starting pipeline...")
+    _clear_gpu()
+
     skip = set()
     if "--skip" in sys.argv:
         idx = sys.argv.index("--skip")

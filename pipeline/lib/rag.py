@@ -300,9 +300,10 @@ class RAGPipeline:
     - Source citation generation
     """
 
-    def __init__(self, vector_store: Optional[VectorStore] = None):
+    def __init__(self, vector_store: Optional[VectorStore] = None, tokenizer=None):
         self.vector_store = vector_store or VectorStore()
         self.config = RAG_CONFIG
+        self.tokenizer = tokenizer
 
     def ingest_training_data(self, data_path: str):
         """Ingest chunked training data into the vector store."""
@@ -327,12 +328,16 @@ class RAGPipeline:
         """Rough token estimate: ~4 chars per token."""
         return len(text) // 4
 
-    def _truncate_context(self, chunks: List[RetrievedChunk]) -> List[RetrievedChunk]:
+    def _truncate_context(self, chunks: List[RetrievedChunk], tokenizer=None) -> List[RetrievedChunk]:
         """Drop lowest-scoring chunks until context fits within token budget."""
         total = 0
         kept = []
+        tok = tokenizer or self.tokenizer
         for chunk in chunks:  # already sorted by score desc
-            t = self._approx_tokens(chunk.text)
+            if tok:
+                t = len(tok.encode(chunk.text, add_special_tokens=False))
+            else:
+                t = self._approx_tokens(chunk.text)
             if total + t > self._MAX_CONTEXT_TOKENS:
                 break
             kept.append(chunk)
@@ -345,6 +350,7 @@ class RAGPipeline:
         top_k: Optional[int] = None,
         metadata_filter: Optional[Dict] = None,
         generate_fn=None,  # optional LLM fn(prompt)->str for HyDE
+        tokenizer=None,
     ) -> RetrievalResult:
         """Retrieve relevant context for a query, with optional HyDE expansion."""
         top_k = top_k or self.config.top_k
@@ -388,7 +394,7 @@ class RAGPipeline:
         combined = combined[:top_k]
 
         # Context window management — drop low-scoring chunks that won't fit
-        combined = self._truncate_context(combined)
+        combined = self._truncate_context(combined, tokenizer=tokenizer)
 
         quality_score = self._assess_retrieval_quality(query, combined)
         sufficient = quality_score >= self.config.similarity_threshold

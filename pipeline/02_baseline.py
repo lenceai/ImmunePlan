@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 02: Prompt Engineering Baseline
-Book: Chapter 2 — Test base model with structured prompts before adding complexity.
+Test base model with structured prompts before adding complexity.
 
 Standalone: conda run -n base python pipeline/02_baseline.py
 Output:     results/baseline_results.json
@@ -57,10 +57,13 @@ def run():
     if rag:
         print(f"Vector store loaded ({len(rag.vector_store.chunks)} chunks) — context will be saved for RAGAS evaluation")
     else:
-        print("Vector store not available — run step 04 first for RAGAS evaluation. Continuing baseline only.")
+        print("RAG context disabled (run step 04 first for RAGAS).")
 
     print(f"Loading model for baseline testing...")
     model, tokenizer = load_model_and_tokenizer(quantize=True)
+    
+    if rag:
+        rag.tokenizer = tokenizer
 
     results = []
     total = len(AUTOIMMUNE_QUESTIONS)

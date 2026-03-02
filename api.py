@@ -4,24 +4,40 @@ ImmunePlan REST API v2.0
 Full reliability pipeline — structured prompts, RAG, tools, agents, safety, monitoring.
 """
 import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 import os
 import logging
 import time
+from pathlib import Path
+from typing import Dict, Any, Optional
 
-app = Flask(__name__)
-CORS(app)
+sys.path.insert(0, str(Path(__file__).parent))
+
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uvicorn
+import asyncio
+
+app = FastAPI(title="ImmunePlan REST API", version="2.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DOCTOR_TYPES = {
-    'immune': {'name': 'Dr. Immunity', 'specialty': 'Autoimmune Disease Specialist',
-               'expertise': 'Rheumatoid arthritis, Crohn\'s disease/IBD, lupus (SLE), Sjogren\'s syndrome, and related autoimmune conditions',
-               'available': True},
+    'immune': {
+        'name': 'Dr. Immunity',
+        'specialty': 'Autoimmune Disease Specialist',
+        'expertise': 'Rheumatoid arthritis, Crohn\'s disease/IBD, lupus (SLE), Sjogren\'s syndrome, and related autoimmune conditions',
+        'available': True
+    },
 }
 
 _pipeline = None
@@ -52,90 +68,93 @@ def get_pipeline():
                       "tools": tools, "safety": safety}
     return _pipeline
 
+class ChatRequest(BaseModel):
+    message: str
+    doctorType: str = "immune"
 
-@app.route('/api/chat', methods=['POST'])
-def chat():
+class ToolRequest(BaseModel):
+    # Dynamic fields for tool arguments
+    pass
+
+class FeedbackRequest(BaseModel):
+    request_id: str
+    rating: int
+    feedback: str = ""
+
+@app.post("/api/chat")
+async def chat(request: ChatRequest):
+    message = request.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    doctor_type = request.doctorType.lower()
+    if doctor_type not in DOCTOR_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid doctor type")
+    if not DOCTOR_TYPES[doctor_type]['available']:
+        raise HTTPException(status_code=503, detail=f"{DOCTOR_TYPES[doctor_type]['name']} not available yet")
+
+    p = get_pipeline()
+    
+    # Run the blocking agent execution in a thread pool so we don't block the async event loop
+    loop = asyncio.get_running_loop()
     try:
-        data = request.json
-        if not data or 'message' not in data:
-            return jsonify({'error': 'Message is required'}), 400
-        message = data['message'].strip()
-        if not message:
-            return jsonify({'error': 'Message cannot be empty'}), 400
-
-        doctor_type = data.get('doctorType', 'immune').lower()
-        if doctor_type not in DOCTOR_TYPES:
-            return jsonify({'error': f'Invalid doctor type'}), 400
-        if not DOCTOR_TYPES[doctor_type]['available']:
-            return jsonify({'error': f'{DOCTOR_TYPES[doctor_type]["name"]} not available yet'}), 503
-
-        p = get_pipeline()
-        result = p["orchestrator"].route_and_process(message, doctor_type)
-
-        return jsonify({
-            'response': result.response,
-            'doctor_name': DOCTOR_TYPES[doctor_type]['name'],
-            'doctor_type': doctor_type,
-            'intent': result.intent.value,
-            'confidence': result.confidence,
-            'quality_score': result.quality_score,
-            'citations': result.citations,
-            'steps': [{"type": s.step_type, "content": s.content} for s in result.steps],
-            'processing_time': result.processing_time_seconds,
-            'disclaimer': result.disclaimer,
-            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-        }), 200
+        result = await loop.run_in_executor(None, p["orchestrator"].route_and_process, message, doctor_type)
     except Exception as e:
         logger.error(f"Chat error: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
+    return {
+        'response': result.response,
+        'doctor_name': DOCTOR_TYPES[doctor_type]['name'],
+        'doctor_type': doctor_type,
+        'intent': result.intent.value,
+        'confidence': result.confidence,
+        'quality_score': result.quality_score,
+        'citations': result.citations,
+        'steps': [{"type": s.step_type, "content": s.content} for s in result.steps],
+        'processing_time': result.processing_time_seconds,
+        'disclaimer': result.disclaimer,
+        'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+    }
 
-@app.route('/api/doctors', methods=['GET'])
-def get_doctors():
-    return jsonify({'doctors': [
+@app.get("/api/doctors")
+async def get_doctors():
+    return {'doctors': [
         {'id': k, **{dk: dv for dk, dv in v.items()}} for k, v in DOCTOR_TYPES.items()
-    ]}), 200
+    ]}
 
+@app.get("/api/tools")
+async def list_tools():
+    return {'tools': get_pipeline()["tools"].list_tools()}
 
-@app.route('/api/tools', methods=['GET'])
-def list_tools():
-    return jsonify({'tools': get_pipeline()["tools"].list_tools()}), 200
+@app.post("/api/tools/{tool_name}")
+async def execute_tool(tool_name: str, request: Request):
+    args = await request.json() if request.headers.get('content-type') == 'application/json' else {}
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, lambda: get_pipeline()["tools"].execute(tool_name, **args))
+    return result.to_dict()
 
+@app.get("/api/dashboard")
+async def dashboard():
+    return get_pipeline()["monitoring"].get_dashboard()
 
-@app.route('/api/tools/<tool_name>', methods=['POST'])
-def execute_tool(tool_name):
-    result = get_pipeline()["tools"].execute(tool_name, **(request.json or {}))
-    return jsonify(result.to_dict()), 200
+@app.post("/api/feedback")
+async def submit_feedback(data: FeedbackRequest):
+    get_pipeline()["monitoring"].record_feedback(data.request_id, data.rating, data.feedback)
+    return {'status': 'recorded'}
 
-
-@app.route('/api/dashboard', methods=['GET'])
-def dashboard():
-    return jsonify(get_pipeline()["monitoring"].get_dashboard()), 200
-
-
-@app.route('/api/feedback', methods=['POST'])
-def submit_feedback():
-    data = request.json
-    if not data or 'request_id' not in data or 'rating' not in data:
-        return jsonify({'error': 'request_id and rating required'}), 400
-    get_pipeline()["monitoring"].record_feedback(data['request_id'], data['rating'], data.get('feedback', ''))
-    return jsonify({'status': 'recorded'}), 200
-
-
-@app.route('/api/reliability', methods=['GET'])
-def reliability_spec():
+@app.get("/api/reliability")
+async def reliability_spec():
     from pipeline.config import RELIABILITY_SPEC
-    return jsonify(RELIABILITY_SPEC), 200
+    return RELIABILITY_SPEC
 
+@app.get("/health")
+async def health():
+    return {'status': 'ok', 'service': 'ImmunePlan API v2.0'}
 
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'ok', 'service': 'ImmunePlan API v2.0'}), 200
-
-
-@app.route('/', methods=['GET'])
-def index():
-    return jsonify({
+@app.get("/")
+async def index():
+    return {
         'service': 'ImmunePlan REST API', 'version': '2.0.0',
         'endpoints': {
             'POST /api/chat': 'Chat with reliability pipeline',
@@ -146,10 +165,10 @@ def index():
             'POST /api/feedback': 'Submit feedback',
             'GET /api/reliability': 'Reliability spec',
         },
-    }), 200
-
+    }
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', '5000'))
     host = os.getenv('HOST', '0.0.0.0')
-    app.run(host=host, port=port, debug=os.getenv('DEBUG', 'false').lower() == 'true')
+    debug = os.getenv('DEBUG', 'false').lower() == 'true'
+    uvicorn.run("api:app", host=host, port=port, reload=debug)
